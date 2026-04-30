@@ -45,11 +45,6 @@ function readRichText(properties: Record<string, unknown>, key: string) {
 function normalizeHypeResult(input: unknown) {
   const obj = asRecord(input);
   const three = asRecord(obj.threeByThree);
-  const trimShort = (value: string, maxChars = 15) => {
-    const normalized = value.replace(/\s+/g, " ").trim();
-    if (normalized.length <= maxChars) return normalized;
-    return normalized.slice(0, maxChars);
-  };
   const readList = (value: unknown) =>
     Array.isArray(value)
       ? value.map((item) => String(item ?? "").trim()).filter(Boolean)
@@ -57,7 +52,7 @@ function normalizeHypeResult(input: unknown) {
   return {
     highlightReplay60s: readList(obj.highlightReplay60s)
       .slice(0, 3)
-      .map((item) => trimShort(item, 15)),
+      .map((item) => item.replace(/\s+/g, " ").trim()),
     threeByThree: {
       mustLandPoints: readList(three.mustLandPoints),
       likelyQuestions: readList(three.likelyQuestions),
@@ -99,11 +94,10 @@ export async function POST(req: Request) {
 }
 
 Hard constraints for highlightReplay60s:
-- Force ultra-minimal mode for pre-interview 5-minute recall.
-- Must be at most 3 bullet points.
-- Each bullet must be 15 Chinese characters or fewer.
-- Emphasize key numbers with markdown bold, e.g. "**10%**".
-- Prefer action + impact snippets, avoid long explanations.
+- 针对【60秒高光回放】区块，你必须严格基于传入的【用户真实简历/故事库】提取最高价值的项目。
+- 绝对不允许出现列表或条目（Bullet points）！你必须输出一段连贯的、口语化的自我陈述，字数严格控制在 200 - 250 字之间（这恰好是人类 60 秒的正常语速）。
+- 严禁自行捏造简历中不存在的数据或业绩。
+- 必须使用 Markdown 加粗（**xxx**）突出关键数字和指标。
 
 Extraction priority:
 1. 60秒自我介绍高光

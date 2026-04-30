@@ -237,7 +237,7 @@ export default function HypePage() {
         ) : null}
         {loadingContext ? <p className="mb-3 text-xs text-zinc-500">正在加载上下文预览...</p> : null}
         <div className="grid gap-3 lg:grid-cols-2">
-          <ResultCard title="60 秒高光回放" items={result?.highlightReplay60s ?? []} />
+          <ParagraphCard title="60 秒高光回放" items={result?.highlightReplay60s ?? []} />
           <ResultCard title="3x3：必须传达的 3 个要点" items={result?.threeByThree.mustLandPoints ?? []} />
           <ResultCard title="3x3：可能被问到的 3 个问题" items={result?.threeByThree.likelyQuestions ?? []} />
           <ResultCard title="失误恢复手册" items={result?.recoveryManual ?? []} />
@@ -247,6 +247,22 @@ export default function HypePage() {
         </div>
       </section>
     </main>
+  );
+}
+
+function ParagraphCard({ title, items }: { title: string; items: string[] }) {
+  const paragraph = items.length > 0 ? items.join(" ") : "生成后显示";
+  return (
+    <div className="neon-card rounded-xl p-4">
+      <h3 className="mb-2 text-sm font-semibold text-zinc-100">{title}</h3>
+      <p className="text-sm leading-relaxed text-zinc-300">
+        {paragraph === "生成后显示" ? (
+          <span className="text-zinc-500">{paragraph}</span>
+        ) : (
+          renderInlineBold(paragraph)
+        )}
+      </p>
+    </div>
   );
 }
 
