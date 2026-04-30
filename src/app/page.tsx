@@ -1,65 +1,94 @@
-import Image from "next/image";
+/* eslint-disable @next/next/no-html-link-for-pages */
+"use client";
+
+import { useEffect, useState } from "react";
+import { DashboardCommandCenter } from "@/components/DashboardCommandCenter";
+import { HistoryCenterPanel } from "@/components/HistoryCenterPanel";
+import { InterviewSchedulePanel } from "@/components/InterviewSchedulePanel";
+import { MergedPageTabs } from "@/components/MergedPageTabs";
+import { PageGuide } from "@/components/PageGuide";
+import { persistTab, readInitialTab } from "@/lib/tab-state";
+
+const DASHBOARD_TAB_KEY = "interview-os-dashboard-active-tab";
 
 export default function Home() {
+  const [tab, setTab] = useState<"command" | "history" | "schedule">("command");
+
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get("tab");
+    const resolved = readInitialTab({
+      queryParam: q,
+      validTabs: ["command", "history", "schedule"],
+      storageKey: DASHBOARD_TAB_KEY,
+      fallback: "command",
+    });
+    setTab(resolved);
+  }, []);
+
+  const onChangeTab = (next: "command" | "history" | "schedule") => {
+    setTab(next);
+    persistTab({
+      next,
+      storageKey: DASHBOARD_TAB_KEY,
+      clearQueryWhen: "command",
+      queryParamName: "tab",
+    });
+  };
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+    <main className="flex w-full flex-col gap-4">
+      <section className="neon-card rounded-3xl p-6 md:p-8">
+        <p className="mb-2 text-xs uppercase tracking-[0.3em] text-violet-300">4 年经验 AI 产品经理（AI PM）</p>
+        <h1 className="neon-text text-3xl font-semibold tracking-tight md:text-4xl">
+          Interview OS 作战中枢
+        </h1>
+        <p className="mt-3 max-w-2xl text-sm leading-6 text-zinc-300">
+          你的求职作战地图。一眼看到当前进度、薄弱环节和下一步行动。
+        </p>
+      </section>
+      <MergedPageTabs
+        tabs={[
+          { id: "command", label: "作战中枢（默认）" },
+          { id: "history", label: "历史记录" },
+          { id: "schedule", label: "面试日程" },
+        ]}
+        activeTab={tab}
+        onChange={(next) => onChangeTab(next as "command" | "history" | "schedule")}
+      />
+      <PageGuide
+        pageKey="dashboard"
+        items={
+          tab === "command"
+            ? [
+                "所有数据自动从各模块聚合，不需要手动操作。",
+                "重点关注行动建议，按优先级逐项清空。",
+                "建议每天至少完成：5道题库练习 + 1轮知识复习 + 1次模拟面试。",
+              ]
+            : tab === "history"
+              ? [
+                  "历史记录用于回看各模块沉淀内容，优先筛选最近 7 天重点复盘。",
+                  "遇到高质量输出，建议回填到当前模块继续迭代，而不是重复新建。",
+                  "按模块查看最近活跃度，快速发现长期未更新的薄弱项。",
+                ]
+              : [
+                  "面试日程用于统一管理公司/岗位/时间节点，避免冲突和遗漏。",
+                  "每场面试建议提前 24 小时生成 Prep，并在当天使用热身简报复盘。",
+                  "面试结束后及时补录结果，便于后续复盘和节奏追踪。",
+                ]
+        }
+      />
+      <div className={tab === "command" ? "block" : "hidden"}>
+        <DashboardCommandCenter />
+      </div>
+      <div className={tab === "history" ? "block" : "hidden"}>
+        <HistoryCenterPanel />
+      </div>
+      <div className={tab === "schedule" ? "block" : "hidden"}>
+        <InterviewSchedulePanel />
+      </div>
+      <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 px-4 py-3 text-sm text-zinc-400">
+        需要帮助？点击左侧菜单「❓ 使用指南」查看完整流程。
+      </section>
+    </main>
   );
 }

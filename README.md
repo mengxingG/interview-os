@@ -1,5 +1,12 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## instructer
+Interview Coach Skill
+五维评分体系、根因诊断、故事库结构、JD 六维解码、简历优化 prompt、模拟面试流程所有 prompt 模板
+TechSparSM-2 
+间隔重复算法、知识点掌握度追踪、持久化用户画像思路知识训练模块 + 进度追踪
+
+
 ## Getting Started
 
 First, run the development server:
