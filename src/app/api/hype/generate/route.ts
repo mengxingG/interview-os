@@ -49,8 +49,13 @@ function normalizeHypeResult(input: unknown) {
     Array.isArray(value)
       ? value.map((item) => String(item ?? "").trim()).filter(Boolean)
       : [];
+  // highlightReplay60s may be a string (single paragraph) or string[]
+  const rawHighlight = obj.highlightReplay60s;
+  const highlightReplay60s = typeof rawHighlight === "string" && rawHighlight.trim()
+    ? [rawHighlight.trim()]
+    : readList(rawHighlight);
   return {
-    highlightReplay60s: readList(obj.highlightReplay60s)
+    highlightReplay60s: highlightReplay60s
       .slice(0, 3)
       .map((item) => item.replace(/\s+/g, " ").trim()),
     threeByThree: {
@@ -129,7 +134,9 @@ ${stories.map((s, idx) => `- S${String(idx + 1).padStart(3, "0")}: ${s.title}; s
     if (!text) {
       throw new Error("All models failed");
     }
-    return Response.json({ result: normalizeHypeResult(parseJson(text)) });
+    const parsed = parseJson(text);
+    const normalized = normalizeHypeResult(parsed);
+    return Response.json({ result: normalized });
   } catch (error) {
     return Response.json(
       { error: "Failed to generate hype brief.", detail: error instanceof Error ? error.message : "unknown" },
