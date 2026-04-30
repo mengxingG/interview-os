@@ -1,6 +1,9 @@
 # 🎯 InterviewOS
 
-> *Your AI-Powered Career Command Center | 从碎片化的面试准备，进化为全周期的 AI 职业资产管理系统。*
+
+> **Your AI-Powered Career Command Center | 从碎片化的面试准备，进化为全周期的 AI 职业资产管理系统。**
+##把准备简历、专项训练、面试、JD 备面、模拟面试，串成一个持续进化的技术面试闭环
+
 
 InterviewOS 是一个专为 AI 产品经理及广大硬核求职者打造的端到端（E2E）求职备战平台。它不仅是一个单纯的"面经生成工具"，更是一个将你的职业经历"原子化、资产化"的**活文档（Living Document）生态**。
 
