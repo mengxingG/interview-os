@@ -88,17 +88,17 @@ npm run dev
 ```
 启动后，在浏览器中访问 http://localhost:3000 即可进入你的专属 AI 求职驾驶舱。
 
-![简历优化工作区](images/resume.png)
-
 ---
 
 ## 🖼️ 更多功能预览
 
-### 岗位定位分析
-基于你的简历底稿与目标 JD，AI 自动生成岗位匹配度分析与定位建议。
+![知识库](images/knowledge.png)
 
-![岗位定位分析](images/position.png)
+![复盘](images/post.png)
 
+![考前热身](images/active.png)
+
+![进程](images/progress.png)
 ---
 
 ## 🤝 贡献与反馈 (Contributing & Feedback)
