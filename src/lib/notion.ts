@@ -33,6 +33,7 @@ const dbs = {
     process.env.NOTION_QUESTIONS_DB ||
     process.env.NOTION_QUESTION_BANK_DB ||
     "",
+  jobs: process.env.NOTION_JOBS_DB || "",
 };
 
 const storyPropertyCache = new Map<string, Set<string>>();
@@ -1910,4 +1911,254 @@ export async function addKnowledgeCardsBatch(
   }>,
 ) {
   await Promise.all(rows.map((item) => addKnowledgeCard(item)));
+}
+
+// ==========================================
+// 5. 岗位监控 (Job Monitor) 操作
+// ==========================================
+
+function ensureJobsDbId() {
+  if (!dbs.jobs) {
+    throw new Error("Missing Jobs DB env: set NOTION_JOBS_DB");
+  }
+}
+
+const jobsPropertyCache = new Map<string, Set<string>>();
+const jobsPropertyDefCache = new Map<string, Record<string, { type?: string }>>();
+
+async function getJobsPropertyNames() {
+  ensureJobsDbId();
+  if (jobsPropertyCache.has(dbs.jobs)) {
+    return jobsPropertyCache.get(dbs.jobs)!;
+  }
+  const db = await notion.databases.retrieve({ database_id: dbs.jobs });
+  const properties =
+    db && typeof db === "object" && "properties" in db
+      ? (db.properties as Record<string, unknown>)
+      : {};
+  const names = new Set(Object.keys(properties));
+  jobsPropertyCache.set(dbs.jobs, names);
+  return names;
+}
+
+async function getJobsPropertyDefs() {
+  ensureJobsDbId();
+  if (jobsPropertyDefCache.has(dbs.jobs)) {
+    return jobsPropertyDefCache.get(dbs.jobs)!;
+  }
+  const db = await notion.databases.retrieve({ database_id: dbs.jobs });
+  const properties =
+    db && typeof db === "object" && "properties" in db
+      ? (db.properties as Record<string, { type?: string }>)
+      : {};
+  jobsPropertyDefCache.set(dbs.jobs, properties);
+  return properties;
+}
+
+export type JobRow = {
+  id: string;
+  title: string;
+  company: string;
+  role: string;
+  matchScore: number;
+  status: string;
+  location: string;
+  url: string;
+  jdText: string;
+  platform: string;
+  salaryRange: string;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+function toJobRow(item: unknown): JobRow {
+  const record = asRecord(item);
+  const properties = asRecord(record.properties);
+  const titleKey = Object.keys(properties).find((key) => asRecord(properties[key]).type === "title") ?? "Title";
+  const statusKey = Object.keys(properties).find((key) => {
+    const prop = asRecord(properties[key]);
+    return prop.type === "select" || prop.type === "status";
+  }) ?? "Status";
+  const companyKey = Object.keys(properties).find((key) => key.toLowerCase().includes("company")) ?? "Company";
+  const roleKey = Object.keys(properties).find((key) => key.toLowerCase().includes("role")) ?? "Role";
+  const matchScoreKey = Object.keys(properties).find((key) => key.toLowerCase().includes("match") || key.toLowerCase().includes("score")) ?? "Match Score";
+  const locationKey = Object.keys(properties).find((key) => key.toLowerCase().includes("location")) ?? "Location";
+  const urlKey = Object.keys(properties).find((key) => key.toLowerCase().includes("url")) ?? "URL";
+  const jdTextKey = Object.keys(properties).find((key) => key.toLowerCase().includes("jd") || key.toLowerCase().includes("job description")) ?? "JD Text";
+  const platformKey = Object.keys(properties).find((key) => key.toLowerCase().includes("platform")) ?? "Platform";
+  const salaryKey = Object.keys(properties).find((key) => key.toLowerCase().includes("salary")) ?? "Salary Range";
+  const notesKey = Object.keys(properties).find((key) => key.toLowerCase().includes("notes") || key.toLowerCase().includes("备注")) ?? "Notes";
+
+  return {
+    id: typeof record.id === "string" ? record.id : "",
+    title: readTitle(properties, titleKey),
+    company: companyKey ? readRichText(properties, companyKey) : "",
+    role: roleKey ? readRichText(properties, roleKey) : "",
+    matchScore: matchScoreKey ? readNumber(properties, matchScoreKey, 0) : 0,
+    status: statusKey ? readSelect(properties, statusKey, "新发现") : "新发现",
+    location: locationKey ? readRichText(properties, locationKey) : "",
+    url: urlKey ? readRichText(properties, urlKey) : "",
+    jdText: jdTextKey ? readRichText(properties, jdTextKey) : "",
+    platform: platformKey ? readSelect(properties, platformKey, "") : "",
+    salaryRange: salaryKey ? readRichText(properties, salaryKey) : "",
+    notes: notesKey ? readRichText(properties, notesKey) : "",
+    createdAt: typeof record.created_time === "string" ? record.created_time : "",
+    updatedAt: typeof record.last_edited_time === "string" ? record.last_edited_time : "",
+  };
+}
+
+export async function getJobs(filters?: {
+  status?: string;
+  platform?: string;
+  sortBy?: "matchScore" | "createdAt";
+  sortOrder?: "ascending" | "descending";
+}) {
+  ensureJobsDbId();
+  const sorts: Array<Record<string, unknown>> = [];
+  if (filters?.sortBy === "matchScore") {
+    const defs = await getJobsPropertyDefs();
+    const matchScoreKey = Object.keys(defs).find((key) => key.toLowerCase().includes("match") || key.toLowerCase().includes("score"));
+    if (matchScoreKey) {
+      sorts.push({ property: matchScoreKey, direction: filters.sortOrder || "descending" });
+    }
+  }
+  if (sorts.length === 0) {
+    sorts.push({ timestamp: "created_time", direction: "descending" });
+  }
+
+  const filterClauses: Array<Record<string, unknown>> = [];
+  if (filters?.status) {
+    const defs = await getJobsPropertyDefs();
+    const statusKey = Object.keys(defs).find((key) => {
+      const prop = defs[key];
+      return prop?.type === "select" || prop?.type === "status";
+    }) ?? "Status";
+    filterClauses.push({
+      property: statusKey,
+      select: { equals: filters.status },
+    });
+  }
+  if (filters?.platform) {
+    const defs = await getJobsPropertyDefs();
+    const platformKey = Object.keys(defs).find((key) => key.toLowerCase().includes("platform")) ?? "Platform";
+    filterClauses.push({
+      property: platformKey,
+      select: { equals: filters.platform },
+    });
+  }
+
+  const response = await notion.databases.query({
+    database_id: dbs.jobs,
+    sorts: sorts as never,
+    ...(filterClauses.length > 0 ? { filter: { and: filterClauses } as never } : {}),
+  });
+
+  return response.results.map((item) => toJobRow(item));
+}
+
+export async function addJob(data: {
+  title: string;
+  company?: string;
+  role?: string;
+  matchScore?: number;
+  status?: string;
+  location?: string;
+  url?: string;
+  jdText?: string;
+  platform?: string;
+  salaryRange?: string;
+  notes?: string;
+}) {
+  ensureJobsDbId();
+  const available = await getJobsPropertyNames();
+  const defs = await getJobsPropertyDefs();
+  const titleKey = pickFirstExisting(["Title", "Name"], available);
+  if (!titleKey) throw new Error("Jobs database must contain Title or Name property.");
+
+  const companyKey = pickFirstExisting(["Company"], available);
+  const roleKey = pickFirstExisting(["Role"], available);
+  const matchScoreKey = Object.keys(defs).find((key) => key.toLowerCase().includes("match") || key.toLowerCase().includes("score"));
+  const statusKey = Object.keys(defs).find((key) => {
+    const prop = defs[key];
+    return prop?.type === "select" || prop?.type === "status";
+  }) ?? "Status";
+  const locationKey = pickFirstExisting(["Location"], available);
+  const urlKey = pickFirstExisting(["URL"], available);
+  const jdTextKey = Object.keys(defs).find((key) => key.toLowerCase().includes("jd") || key.toLowerCase().includes("job description"));
+  const platformKey = pickFirstExisting(["Platform"], available);
+  const salaryKey = Object.keys(defs).find((key) => key.toLowerCase().includes("salary"));
+  const notesKey = Object.keys(defs).find((key) => key.toLowerCase().includes("notes") || key.toLowerCase().includes("备注"));
+
+  const properties: Record<string, unknown> = {
+    [titleKey]: { title: [{ text: { content: data.title } }] },
+  };
+
+  if (companyKey && data.company) {
+    properties[companyKey] = { rich_text: [{ text: { content: data.company } }] };
+  }
+  if (roleKey && data.role) {
+    properties[roleKey] = { rich_text: [{ text: { content: data.role } }] };
+  }
+  if (matchScoreKey && typeof data.matchScore === "number") {
+    properties[matchScoreKey] = { number: data.matchScore };
+  }
+  if (statusKey && data.status) {
+    const statusType = defs[statusKey]?.type;
+    if (statusType === "status") {
+      properties[statusKey] = { status: { name: data.status } };
+    } else {
+      properties[statusKey] = { select: { name: data.status } };
+    }
+  }
+  if (locationKey && data.location) {
+    properties[locationKey] = { rich_text: [{ text: { content: data.location } }] };
+  }
+  if (urlKey && data.url) {
+    properties[urlKey] = { url: data.url };
+  }
+  if (jdTextKey && data.jdText) {
+    properties[jdTextKey] = { rich_text: createNotionRichText(data.jdText) };
+  }
+  if (platformKey && data.platform) {
+    properties[platformKey] = { select: { name: data.platform } };
+  }
+  if (salaryKey && data.salaryRange) {
+    properties[salaryKey] = { rich_text: [{ text: { content: data.salaryRange } }] };
+  }
+  if (notesKey && data.notes) {
+    properties[notesKey] = { rich_text: [{ text: { content: data.notes } }] };
+  }
+
+  return notion.pages.create({
+    parent: { database_id: dbs.jobs },
+    properties: properties as never,
+  });
+}
+
+export async function updateJobStatus(pageId: string, status: string) {
+  ensureJobsDbId();
+  const defs = await getJobsPropertyDefs();
+  const statusKey = Object.keys(defs).find((key) => {
+    const prop = defs[key];
+    return prop?.type === "select" || prop?.type === "status";
+  }) ?? "Status";
+  const statusType = defs[statusKey]?.type;
+
+  return notion.pages.update({
+    page_id: pageId,
+    properties: {
+      [statusKey]: statusType === "status"
+        ? { status: { name: status } }
+        : { select: { name: status } },
+    } as never,
+  });
+}
+
+export async function deleteJob(pageId: string) {
+  ensureJobsDbId();
+  return notion.pages.update({
+    page_id: pageId,
+    archived: true,
+  });
 }

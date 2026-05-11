@@ -28,6 +28,10 @@ import {
   updateCoachingSession,
   updateNotionPageProperties,
   archiveNotionPage,
+  getJobs,
+  addJob,
+  updateJobStatus,
+  deleteJob,
 } from "@/lib/notion";
 import { getModel } from "@/lib/llm";
 
@@ -921,8 +925,17 @@ export async function GET(req: Request) {
       return NextResponse.json({ records });
     }
 
+    if (resource === "jobs") {
+      const status = url.searchParams.get("status") || undefined;
+      const platform = url.searchParams.get("platform") || undefined;
+      const sortBy = (url.searchParams.get("sortBy") as "matchScore" | "createdAt") || undefined;
+      const sortOrder = (url.searchParams.get("sortOrder") as "ascending" | "descending") || undefined;
+      const jobs = await getJobs({ status, platform, sortBy, sortOrder });
+      return NextResponse.json({ jobs });
+    }
+
     return NextResponse.json(
-      { error: "Unsupported resource. Use resource=knowledge, resource=stories, resource=progress, resource=jd, resource=resume, resource=hype-records, resource=hype-record-content, resource=mock-reports, resource=resume-base, resource=resume-bases, resource=profile-optimization, resource=profile-history, or resource=coaching-session." },
+      { error: "Unsupported resource. Use resource=knowledge, resource=stories, resource=progress, resource=jd, resource=resume, resource=hype-records, resource=hype-record-content, resource=mock-reports, resource=resume-base, resource=resume-bases, resource=profile-optimization, resource=profile-history, resource=coaching-session, or resource=jobs." },
       { status: 400 },
     );
   } catch (error) {
@@ -999,6 +1012,13 @@ export async function POST(req: Request) {
       persona?: "technical" | "execution" | "behavioral";
       qaPairs?: Array<{ question?: string; answer?: string }>;
       properties?: Record<string, unknown>;
+      // Jobs fields
+      matchScore?: number;
+      status?: string;
+      location?: string;
+      url?: string;
+      salaryRange?: string;
+      notes?: string;
     };
 
     if (
@@ -1356,6 +1376,46 @@ export async function POST(req: Request) {
         lastQuality: body.lastQuality,
       });
 
+      return NextResponse.json({ ok: true });
+    }
+
+    // ==========================================
+    // 岗位监控 (Jobs) CRUD
+    // ==========================================
+    if (body.resource === "jobs" && body.action === "create") {
+      if (!body.title) {
+        return NextResponse.json({ error: "Missing required job title." }, { status: 400 });
+      }
+      const created = await addJob({
+        title: body.title,
+        company: body.company,
+        role: body.role,
+        matchScore: typeof body.matchScore === "number" ? body.matchScore : undefined,
+        status: body.status || "新发现",
+        location: body.location,
+        url: body.url,
+        jdText: body.jdText,
+        platform: body.platform,
+        salaryRange: body.salaryRange,
+        notes: body.notes,
+      });
+      const createdRecord = created as { id?: string };
+      return NextResponse.json({ ok: true, id: createdRecord.id ?? "" });
+    }
+
+    if (body.resource === "jobs" && body.action === "update-status") {
+      if (!body.pageId || !body.status) {
+        return NextResponse.json({ error: "Missing pageId or status." }, { status: 400 });
+      }
+      await updateJobStatus(body.pageId, body.status);
+      return NextResponse.json({ ok: true });
+    }
+
+    if (body.resource === "jobs" && body.action === "delete") {
+      if (!body.pageId) {
+        return NextResponse.json({ error: "Missing pageId." }, { status: 400 });
+      }
+      await deleteJob(body.pageId);
       return NextResponse.json({ ok: true });
     }
 

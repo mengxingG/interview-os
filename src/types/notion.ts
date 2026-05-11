@@ -34,3 +34,25 @@ export type QuestionBankNotionRow = {
   status: string;
   knowledge: NotionRelationRef[];
 };
+
+// ==========================================
+// 岗位监控 (Job Monitor) 类型
+// ==========================================
+export type JobStatus = "新发现" | "已查看" | "已解码" | "已投递" | "已放弃";
+
+export type JobRow = {
+  id: string;
+  title: string;
+  company: string;
+  role: string;
+  matchScore: number;
+  status: JobStatus;
+  location: string;
+  url: string;
+  jdText: string;
+  platform: string;
+  salaryRange: string;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+};

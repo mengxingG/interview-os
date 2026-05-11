@@ -7,9 +7,13 @@ import { MergedPageTabs } from "@/components/MergedPageTabs";
 import { PageGuide } from "@/components/PageGuide";
 import { parseDecodeJsonObject, parseDecodeResultSections } from "@/lib/jd-decode-format";
 import { persistTab, readInitialTab } from "@/lib/tab-state";
+import { JobMonitorTab } from "@/components/JobMonitorTab";
+import type { JobRow } from "@/lib/notion";
 
 const JOB_ANALYSIS_TAB_KEY = "interview-os-job-analysis-active-tab";
 const DECODE_DRAFT_KEY = "interview-os-decode-draft";
+const VALID_TABS = ["research", "decode", "monitor"] as const;
+type TabType = (typeof VALID_TABS)[number];
 
 type JdRecord = {
   id: string;
@@ -150,7 +154,7 @@ function parsePrepPlanFromMarkdown(notes?: string): PrepPlan | null {
 }
 
 export default function JobAnalysisPage() {
-  const [tab, setTab] = useState<"research" | "decode">("research");
+  const [tab, setTab] = useState<TabType>("research");
   const [decodeMountKey, setDecodeMountKey] = useState(0);
   const [savedJdRecords, setSavedJdRecords] = useState<JdRecord[]>([]);
   const [loadingRecords, setLoadingRecords] = useState(false);
@@ -182,7 +186,7 @@ export default function JobAnalysisPage() {
     const q = new URLSearchParams(window.location.search).get("tab");
     const resolved = readInitialTab({
       queryParam: q,
-      validTabs: ["research", "decode"],
+      validTabs: [...VALID_TABS],
       storageKey: JOB_ANALYSIS_TAB_KEY,
       fallback: "research",
     });
@@ -190,10 +194,11 @@ export default function JobAnalysisPage() {
     void loadSavedRecords();
   }, []);
 
-  const onChangeTab = (next: "research" | "decode") => {
-    setTab(next);
+  const onChangeTab = (next: string) => {
+    const nextTab = next as TabType;
+    setTab(nextTab);
     persistTab({
-      next,
+      next: nextTab,
       storageKey: JOB_ANALYSIS_TAB_KEY,
       queryParamName: "tab",
     });
@@ -290,9 +295,10 @@ export default function JobAnalysisPage() {
         tabs={[
           { id: "research", label: "公司研究" },
           { id: "decode", label: "JD 解码" },
+          { id: "monitor", label: "岗位监控", hint: "Kanban" },
         ]}
         activeTab={tab}
-        onChange={(next) => onChangeTab(next as "research" | "decode")}
+        onChange={(next) => onChangeTab(next)}
       />
       <PageGuide pageKey="job-analysis" items={["先做公司研究，再进入 JD 解码。", "Tab 内切换不会刷新页面。"]} />
 
@@ -359,6 +365,13 @@ export default function JobAnalysisPage() {
               {recordsError ? <p className="mt-1 text-xs text-amber-300">{recordsError}</p> : null}
             </div>
           }
+        />
+      </div>
+      <div className={tab === "monitor" ? "block" : "hidden"}>
+        <JobMonitorTab
+          onNavigateToDecode={(_job: JobRow) => {
+            onChangeTab("decode");
+          }}
         />
       </div>
       {pendingRecord ? (
