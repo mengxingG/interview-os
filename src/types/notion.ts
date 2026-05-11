@@ -53,6 +53,7 @@ export type JobRow = {
   platform: string;
   salaryRange: string;
   notes: string;
+  jdSummary: string;
   createdAt: string;
   updatedAt: string;
 };

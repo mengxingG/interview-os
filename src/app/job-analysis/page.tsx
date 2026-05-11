@@ -154,8 +154,9 @@ function parsePrepPlanFromMarkdown(notes?: string): PrepPlan | null {
 }
 
 export default function JobAnalysisPage() {
-  const [tab, setTab] = useState<TabType>("research");
+  const [tab, setTab] = useState<TabType>("monitor");
   const [decodeMountKey, setDecodeMountKey] = useState(0);
+  const [researchMountKey, setResearchMountKey] = useState(0);
   const [savedJdRecords, setSavedJdRecords] = useState<JdRecord[]>([]);
   const [loadingRecords, setLoadingRecords] = useState(false);
   const [recordsError, setRecordsError] = useState("");
@@ -293,9 +294,9 @@ export default function JobAnalysisPage() {
       </section>
       <MergedPageTabs
         tabs={[
-          { id: "research", label: "公司研究" },
-          { id: "decode", label: "JD 解码" },
           { id: "monitor", label: "岗位监控", hint: "Kanban" },
+          { id: "decode", label: "JD 解码" },
+          { id: "research", label: "公司研究" },
         ]}
         activeTab={tab}
         onChange={(next) => onChangeTab(next)}
@@ -304,7 +305,7 @@ export default function JobAnalysisPage() {
 
       <div className={tab === "research" ? "block space-y-3" : "hidden"}>
         <div className="space-y-3">
-          <ResearchPage />
+          <ResearchPage key={researchMountKey} />
           <section className="neon-card rounded-xl p-4">
             <button
               type="button"
@@ -369,8 +370,34 @@ export default function JobAnalysisPage() {
       </div>
       <div className={tab === "monitor" ? "block" : "hidden"}>
         <JobMonitorTab
-          onNavigateToDecode={(_job: JobRow) => {
+          onNavigateToDecode={(job: JobRow) => {
+            // 将 JD 原文写入 localStorage，让 DecodePage 自动填充
+            const draft = {
+              jdText: job.jdText || "",
+              jdRecordId: job.id || "",
+              scheduleChoice: "new" as const,
+              loadedFromHistory: false,
+              company: job.company || "",
+              role: job.role || "",
+              result: null,
+              plan: null,
+              savedAt: new Date().toISOString(),
+            };
+            window.localStorage.setItem(DECODE_DRAFT_KEY, JSON.stringify(draft));
+            // 先切换到 decode tab，再递增 mountKey 强制 DecodePage 重新挂载读取最新 draft
             onChangeTab("decode");
+            setDecodeMountKey((prev) => prev + 1);
+          }}
+          onNavigateToResearch={(job: JobRow) => {
+            // 将公司名写入 research draft，切换到 research tab
+            const draft = {
+              company: job.company || "",
+              depth: "standard" as const,
+              savedAt: new Date().toISOString(),
+            };
+            window.localStorage.setItem("interview-os-research-draft", JSON.stringify(draft));
+            onChangeTab("research");
+            setResearchMountKey((prev) => prev + 1);
           }}
         />
       </div>

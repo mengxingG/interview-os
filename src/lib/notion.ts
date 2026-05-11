@@ -1968,6 +1968,7 @@ export type JobRow = {
   platform: string;
   salaryRange: string;
   notes: string;
+  jdSummary: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -1989,6 +1990,13 @@ function toJobRow(item: unknown): JobRow {
   const platformKey = Object.keys(properties).find((key) => key.toLowerCase().includes("platform")) ?? "Platform";
   const salaryKey = Object.keys(properties).find((key) => key.toLowerCase().includes("salary")) ?? "Salary Range";
   const notesKey = Object.keys(properties).find((key) => key.toLowerCase().includes("notes") || key.toLowerCase().includes("备注")) ?? "Notes";
+  const jdSummaryKey = Object.keys(properties).find((key) => key.toLowerCase().includes("summary") || key.toLowerCase().includes("jd summary")) ?? "JD Summary";
+
+  // 读取 URL 类型属性
+  function readUrl(properties: Record<string, unknown>, key: string): string {
+    const prop = asRecord(properties[key]);
+    return typeof prop.url === "string" ? prop.url : "";
+  }
 
   return {
     id: typeof record.id === "string" ? record.id : "",
@@ -1998,11 +2006,12 @@ function toJobRow(item: unknown): JobRow {
     matchScore: matchScoreKey ? readNumber(properties, matchScoreKey, 0) : 0,
     status: statusKey ? readSelect(properties, statusKey, "新发现") : "新发现",
     location: locationKey ? readRichText(properties, locationKey) : "",
-    url: urlKey ? readRichText(properties, urlKey) : "",
+    url: urlKey ? readUrl(properties, urlKey) : "",
     jdText: jdTextKey ? readRichText(properties, jdTextKey) : "",
-    platform: platformKey ? readSelect(properties, platformKey, "") : "",
+    platform: platformKey ? readRichText(properties, platformKey) : "",
     salaryRange: salaryKey ? readRichText(properties, salaryKey) : "",
     notes: notesKey ? readRichText(properties, notesKey) : "",
+    jdSummary: jdSummaryKey ? readRichText(properties, jdSummaryKey) : "",
     createdAt: typeof record.created_time === "string" ? record.created_time : "",
     updatedAt: typeof record.last_edited_time === "string" ? record.last_edited_time : "",
   };
