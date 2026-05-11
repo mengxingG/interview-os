@@ -762,6 +762,9 @@ export default function StoriesPage() {
   const lastOptimizeUserMessageIdRef = useRef("");
   const [optimizeChatLoading, setOptimizeChatLoading] = useState(false);
   const optimizeQuickLockRef = useRef(false);
+  // Synchronous ref to track latest optimize messages without async delay from schedulePersistOptimizeSession.
+  // This ensures the 90s auto-detect useEffect and button handler always read fresh data.
+  const latestOptimizeMessagesRef = useRef<ChatMessageView[]>([]);
   const [jdOptions, setJdOptions] = useState<JDOption[]>([]);
   const [selectedTargetJobId, setSelectedTargetJobId] = useState("");
   const [storyViewTabs, setStoryViewTabs] = useState<Record<string, StoryViewTab>>({});
@@ -818,13 +821,15 @@ export default function StoriesPage() {
   }, [optimizeChatLoading]);
 
   // Step 2: Auto-detect ### ⏱️ 90秒口述版本 in assistant messages and open preview modal
-  // Only fires when loading finishes (optimizeChatLoading transitions false->true->false)
-  // and the latest assistant message strictly contains the 90s anchor.
+  // Uses latestOptimizeMessagesRef (synchronous) instead of optimizeSession?.messages (async-delayed)
+  // to ensure the detection fires reliably when loading finishes.
   useEffect(() => {
     // Critical: never open preview while still loading (prevents showing half-baked content)
     if (optimizeChatLoading) return;
-    if (!optimizeStory || !optimizeSession?.messages?.length) return;
-    const latestAssistant = [...optimizeSession.messages]
+    if (!optimizeStory) return;
+    const messages = latestOptimizeMessagesRef.current;
+    if (!messages.length) return;
+    const latestAssistant = [...messages]
       .reverse()
       .find((msg) => msg.role === "assistant")?.content ?? "";
     if (!latestAssistant) return;
@@ -843,7 +848,7 @@ export default function StoriesPage() {
       content: extracted,
     });
     setOptimizeSyncText("✅ 已自动检测到 90 秒口述版本，请在预览弹窗中确认并同步。");
-  }, [optimizeChatLoading, optimizeSession?.messages, optimizeStory]);
+  }, [optimizeChatLoading, optimizeStory, derivedPreview?.content]);
   useEffect(() => {
     return () => {
       if (persistIdleIdRef.current !== null && typeof window !== "undefined" && "cancelIdleCallback" in window) {
@@ -2859,9 +2864,9 @@ export default function StoriesPage() {
                           setOptimizeToast("正在生成回复，请稍候");
                           return;
                         }
-                        // Step 1: Strict check - only consider "已有 90s 内容" if the latest assistant
-                        // message explicitly contains the anchor "### ⏱️ 90秒口述版本"
-                        const latestAssistant = [...(optimizeSession?.messages ?? [])]
+                        // Step 1: Strict check - use synchronous ref for fresh data
+                        const messages = latestOptimizeMessagesRef.current;
+                        const latestAssistant = [...messages]
                           .reverse()
                           .find((msg) => msg.role === "assistant")?.content ?? "";
                         const hasNinetyAnchor = latestAssistant.includes("### ⏱️ 90秒口述版本");
@@ -2898,6 +2903,8 @@ export default function StoriesPage() {
                   lastOptimizeUserMessageIdRef.current = latestUser.id;
                   setIsRiskIgnored(false);
                 }
+                // Update synchronous ref immediately (no async delay)
+                latestOptimizeMessagesRef.current = messages;
                 schedulePersistOptimizeSession(optimizeStory, messages);
               }}
               onLoadingChange={setOptimizeChatLoading}
