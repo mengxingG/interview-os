@@ -54,6 +54,8 @@ export type JobRow = {
   salaryRange: string;
   notes: string;
   jdSummary: string;
+  matchReasons?: string;
+  mismatchReasons?: string;
   createdAt: string;
   updatedAt: string;
 };

@@ -872,8 +872,10 @@ function JobCard({
   onNavigateToDecode?: (job: JobRow) => void;
   onNavigateToResearch?: (job: JobRow) => void;
 }) {
+  const [isAiExpanded, setIsAiExpanded] = useState(false);
   const hasHighMatch = job.matchScore >= 80;
   const companyInitial = (job.company || "?")[0];
+  const hasAiAssessment = !!(job.matchReasons || job.mismatchReasons);
 
   const matchLabel = (score: number) => {
     if (score >= 80) return { text: "🔥 高匹配", color: "text-emerald-300 border-emerald-500/30 bg-emerald-500/10" };
@@ -927,10 +929,10 @@ function JobCard({
           </div>
         </div>
 
-      {/* JD Summary — 默认2行省略，hover 展开完整内容 */}
+      {/* JD Summary — 默认3行省略，hover 展开完整内容 */}
       {job.jdSummary && (
         <p
-          className="mt-3 mb-3 line-clamp-2 text-sm leading-relaxed text-gray-300 transition-all duration-200 hover:line-clamp-none"
+          className="mt-3 mb-3 line-clamp-3 text-sm leading-relaxed text-gray-300 transition-all duration-200 hover:line-clamp-none"
           style={{ fontSize: "14px", lineHeight: "1.6" }}
         >
           {job.jdSummary}
@@ -967,6 +969,49 @@ function JobCard({
             {ml.text}
           </span>
         </div>
+
+        {/* ⚡ AI 深度评估 — 折叠展开按钮 */}
+        {hasAiAssessment && (
+          <div className="mt-3">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsAiExpanded((prev) => !prev);
+              }}
+              className="group/ai flex w-full items-center justify-center gap-1.5 rounded-md border border-cyan-500/20 bg-cyan-500/[0.04] px-2 py-1.5 text-[11px] text-cyan-300/70 transition-all hover:border-cyan-500/40 hover:bg-cyan-500/[0.08] hover:text-cyan-200"
+            >
+              <span className="transition-transform duration-200 group-hover/ai:scale-110">⚡</span>
+              <span>AI 深度评估</span>
+              <svg
+                className={`h-3 w-3 transition-transform duration-200 ${isAiExpanded ? "rotate-180" : ""}`}
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+            {/* 展开面板 */}
+            {isAiExpanded && (
+              <div className="mt-2 space-y-2 rounded-lg bg-black/50 p-3 shadow-[inset_0_1px_3px_rgba(0,0,0,0.5)]">
+                {job.matchReasons && (
+                  <div className="border-l-2 border-emerald-500/60 pl-3">
+                    <p className="mb-1 text-[11px] font-semibold text-emerald-400">✅ 核心优势</p>
+                    <p className="whitespace-pre-wrap text-[11px] leading-relaxed text-emerald-100/80">{job.matchReasons}</p>
+                  </div>
+                )}
+                {job.mismatchReasons && (
+                  <div className="border-l-2 border-orange-500/60 pl-3">
+                    <p className="mb-1 text-[11px] font-semibold text-orange-400">⚠️ 潜在风险</p>
+                    <p className="whitespace-pre-wrap text-[11px] leading-relaxed text-orange-100/80">{job.mismatchReasons}</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* 展开操作栏 */}
         {isExpanded && (

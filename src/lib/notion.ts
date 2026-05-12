@@ -1969,6 +1969,8 @@ export type JobRow = {
   salaryRange: string;
   notes: string;
   jdSummary: string;
+  matchReasons?: string;
+  mismatchReasons?: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -1991,6 +1993,11 @@ function toJobRow(item: unknown): JobRow {
   const salaryKey = Object.keys(properties).find((key) => key.toLowerCase().includes("salary")) ?? "Salary Range";
   const notesKey = Object.keys(properties).find((key) => key.toLowerCase().includes("notes") || key.toLowerCase().includes("备注")) ?? "Notes";
   const jdSummaryKey = Object.keys(properties).find((key) => key.toLowerCase().includes("summary") || key.toLowerCase().includes("jd summary")) ?? "JD Summary";
+  const matchReasonsKey = Object.keys(properties).find((key) => {
+    const lower = key.toLowerCase();
+    return (lower.includes("match reasons") || lower.includes("match_reasons")) && !lower.includes("mismatch");
+  }) ?? "Match Reasons";
+  const mismatchReasonsKey = Object.keys(properties).find((key) => key.toLowerCase().includes("mismatch reasons") || key.toLowerCase().includes("mismatch_reasons")) ?? "Mismatch Reasons";
 
   // 读取 URL 类型属性
   function readUrl(properties: Record<string, unknown>, key: string): string {
@@ -2012,6 +2019,8 @@ function toJobRow(item: unknown): JobRow {
     salaryRange: salaryKey ? readRichText(properties, salaryKey) : "",
     notes: notesKey ? readRichText(properties, notesKey) : "",
     jdSummary: jdSummaryKey ? readRichText(properties, jdSummaryKey) : "",
+    matchReasons: matchReasonsKey ? readRichText(properties, matchReasonsKey) : undefined,
+    mismatchReasons: mismatchReasonsKey ? readRichText(properties, mismatchReasonsKey) : undefined,
     createdAt: typeof record.created_time === "string" ? record.created_time : "",
     updatedAt: typeof record.last_edited_time === "string" ? record.last_edited_time : "",
   };
@@ -2063,7 +2072,21 @@ export async function getJobs(filters?: {
     ...(filterClauses.length > 0 ? { filter: { and: filterClauses } as never } : {}),
   });
 
-  return response.results.map((item) => toJobRow(item));
+  const rows = response.results.map((item) => toJobRow(item));
+
+  // 打印第一条岗位数据，验证新增字段
+  if (rows.length > 0) {
+    console.log("[getJobs] 第一条岗位数据:", JSON.stringify(rows[0], null, 2));
+  }
+
+  // 打印所有 Notion 属性键名，确认数据库字段名
+  if (response.results.length > 0) {
+    const record = response.results[0] as Record<string, unknown>;
+    const props = (record.properties ?? {}) as Record<string, unknown>;
+    console.log("[getJobs] Notion 原始属性键名:", Object.keys(props));
+  }
+
+  return rows;
 }
 
 export async function addJob(data: {
