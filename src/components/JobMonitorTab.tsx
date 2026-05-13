@@ -668,6 +668,9 @@ function KanbanColumn({
                   )}
                   {job.notes && <p className="text-zinc-500 leading-relaxed">📝 {job.notes}</p>}
                   <div className="flex flex-wrap gap-1.5 pt-1">
+                    {job.url && (
+                      <button type="button" onClick={(e) => { e.stopPropagation(); window.open(job.url, '_blank'); }} className="rounded-md border border-purple-500/30 bg-purple-500/10 px-2 py-1 text-[10px] text-purple-200 transition hover:bg-purple-500/20 hover:shadow-[0_0_8px_rgba(168,85,247,0.3)]">🔗 去看看</button>
+                    )}
                     {onNavigateToDecode && (
                       <button type="button" onClick={(e) => { e.stopPropagation(); onNavigateToDecode(job); }} className="rounded-md border border-cyan-500/30 bg-cyan-500/10 px-2 py-1 text-[10px] text-cyan-200 transition hover:bg-cyan-500/20">🔓 解码</button>
                     )}
