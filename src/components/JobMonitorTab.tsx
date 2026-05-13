@@ -213,6 +213,7 @@ export function JobMonitorTab({ onNavigateToDecode, onNavigateToResearch }: JobM
   const [dragJobId, setDragJobId] = useState<string | null>(null);
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
   const [useMock, setUseMock] = useState(false);
+  const [activePlatform, setActivePlatform] = useState("全部");
   const [visibleColumns, setVisibleColumns] = useState<Set<number>>(new Set([0, 1, 2]));
   const kanbanRef = useRef<HTMLDivElement>(null);
   const autoScrollRef = useRef<number | null>(null);
@@ -247,29 +248,42 @@ export function JobMonitorTab({ onNavigateToDecode, onNavigateToResearch }: JobM
     void loadJobs();
   }, [loadJobs]);
 
+  // ==========================================
+  // 平台筛选逻辑
+  // ==========================================
+  const platformList = useMemo(() => {
+    const platforms = Array.from(new Set(jobs.map((j) => j.platform).filter(Boolean)));
+    return ["全部", ...platforms.sort()];
+  }, [jobs]);
+
+  const filteredJobs = useMemo(() => {
+    if (activePlatform === "全部") return jobs;
+    return jobs.filter((j) => j.platform === activePlatform);
+  }, [jobs, activePlatform]);
+
   const stats = useMemo(() => {
     const now = new Date();
     const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const thisWeek = jobs.filter((j) => {
+    const thisWeek = filteredJobs.filter((j) => {
       const d = new Date(j.createdAt);
       return !isNaN(d.getTime()) && d >= weekAgo;
     }).length;
-    const highMatch = jobs.filter((j) => j.matchScore >= 80).length;
-    const pending = jobs.filter((j) => j.status === "新发现" || j.status === "已查看").length;
-    const decoded = jobs.filter((j) => j.status === "已解码").length;
-    const applied = jobs.filter((j) => j.status === "已投递").length;
-    return { thisWeek, highMatch, pending, decoded, applied, total: jobs.length };
-  }, [jobs]);
+    const highMatch = filteredJobs.filter((j) => j.matchScore >= 80).length;
+    const pending = filteredJobs.filter((j) => j.status === "新发现" || j.status === "已查看").length;
+    const decoded = filteredJobs.filter((j) => j.status === "已解码").length;
+    const applied = filteredJobs.filter((j) => j.status === "已投递").length;
+    return { thisWeek, highMatch, pending, decoded, applied, total: filteredJobs.length };
+  }, [filteredJobs]);
 
   const grouped = useMemo(() => {
     const map: Record<string, JobRow[]> = {};
     for (const status of STATUS_COLUMNS) map[status] = [];
-    for (const job of jobs) {
+    for (const job of filteredJobs) {
       const s = STATUS_COLUMNS.includes(job.status as JobStatus) ? job.status : "新发现";
       map[s].push(job);
     }
     return map;
-  }, [jobs]);
+  }, [filteredJobs]);
 
   const columnCounts = useMemo(() => {
     return STATUS_COLUMNS.map((s) => grouped[s].length);
@@ -421,6 +435,26 @@ export function JobMonitorTab({ onNavigateToDecode, onNavigateToResearch }: JobM
         </div>
       </section>
       <ManualEntry onSaved={() => void loadJobs()} useMock={useMock} />
+      {/* 平台筛选 Tab */}
+      <section className="neon-card rounded-xl px-3 py-2">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="mr-1 text-[10px] font-medium text-zinc-500">📡 平台</span>
+          {platformList.map((platform) => (
+            <button
+              key={platform}
+              type="button"
+              onClick={() => setActivePlatform(platform)}
+              className={`rounded-lg border px-2.5 py-1 text-[11px] font-medium transition-all ${
+                activePlatform === platform
+                  ? "border-cyan-500/60 text-cyan-300 shadow-[0_0_6px_rgba(34,211,238,0.15)]"
+                  : "border-zinc-700/50 text-zinc-500 hover:border-zinc-600 hover:text-zinc-300"
+              }`}
+            >
+              {platform}
+            </button>
+          ))}
+        </div>
+      </section>
       <section className="neon-card rounded-xl px-3 py-2">
         <div className="flex items-center gap-1">
           {STATUS_COLUMNS.map((status, idx) => {
