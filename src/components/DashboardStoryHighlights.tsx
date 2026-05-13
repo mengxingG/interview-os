@@ -51,7 +51,7 @@ export function DashboardStoryHighlights() {
     let mounted = true;
     async function loadStories() {
       try {
-        const response = await fetch("/api/notion?resource=stories");
+        const response = await fetch("/api/notion?resource=stories", { cache: "no-store" });
         if (!response.ok) {
           return;
         }

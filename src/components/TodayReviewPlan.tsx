@@ -21,7 +21,7 @@ export function TodayReviewPlan() {
     let mounted = true;
     async function load() {
       try {
-        const response = await fetch("/api/notion/knowledge");
+        const response = await fetch("/api/notion/knowledge", { cache: "no-store" });
         if (!response.ok) throw new Error(String(response.status));
         const payload = (await response.json()) as { cards?: Card[] };
         if (!mounted) return;

@@ -25,7 +25,7 @@ export function DashboardStats() {
     let mounted = true;
     async function load() {
       try {
-        const response = await fetch("/api/notion/progress");
+        const response = await fetch("/api/notion/progress", { cache: "no-store" });
         if (!response.ok) {
           return;
         }

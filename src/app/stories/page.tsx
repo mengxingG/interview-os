@@ -1073,7 +1073,7 @@ export default function StoriesPage() {
     let mounted = true;
     async function loadStories() {
       try {
-        const response = await fetch("/api/notion?resource=stories");
+        const response = await fetch("/api/notion?resource=stories", { cache: "no-store" });
         let payload: { stories?: Story[]; error?: string; detail?: string } = {};
         try {
           payload = (await response.json()) as typeof payload;

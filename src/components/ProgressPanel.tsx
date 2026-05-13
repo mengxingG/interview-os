@@ -311,7 +311,7 @@ export function ProgressPanel() {
     let mounted = true;
     async function loadProgress() {
       try {
-        const response = await fetch("/api/notion/progress");
+        const response = await fetch("/api/notion/progress", { cache: "no-store" });
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
         }

@@ -130,7 +130,7 @@ export function Sidebar({ className = "", onNavigate }: SidebarProps) {
     let mounted = true;
     async function loadHint() {
       try {
-        const response = await fetch("/api/notion/progress");
+        const response = await fetch("/api/notion/progress", { cache: "no-store" });
         if (!response.ok) {
           return;
         }

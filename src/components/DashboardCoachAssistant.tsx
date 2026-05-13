@@ -40,7 +40,7 @@ export function DashboardCoachAssistant() {
     let mounted = true;
     async function load() {
       try {
-        const response = await fetch("/api/notion/progress");
+        const response = await fetch("/api/notion/progress", { cache: "no-store" });
         if (!response.ok) return;
         const payload = (await response.json()) as ProgressPayload;
         if (!mounted || !payload.dashboard) return;

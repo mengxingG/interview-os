@@ -64,7 +64,7 @@ export function StoryManagerPanel() {
 
     async function loadStories() {
       try {
-        const response = await fetch("/api/notion/stories");
+        const response = await fetch("/api/notion/stories", { cache: "no-store" });
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
         }

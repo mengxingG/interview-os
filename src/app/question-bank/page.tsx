@@ -227,7 +227,7 @@ export default function QuestionBankPage() {
     let mounted = true;
     async function loadKnowledgeTitles() {
       try {
-        const response = await fetch("/api/notion/knowledge");
+        const response = await fetch("/api/notion/knowledge", { cache: "no-store" });
         const payload = (await response.json()) as {
           cards?: Array<{ id?: string; title?: string }>;
         };
