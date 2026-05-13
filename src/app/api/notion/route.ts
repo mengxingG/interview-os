@@ -1019,6 +1019,9 @@ export async function POST(req: Request) {
       url?: string;
       salaryRange?: string;
       notes?: string;
+      jdSummary?: string;
+      matchReasons?: string[];
+      mismatchReasons?: string[];
     };
 
     if (
@@ -1398,6 +1401,9 @@ export async function POST(req: Request) {
         platform: body.platform,
         salaryRange: body.salaryRange,
         notes: body.notes,
+        jdSummary: body.jdSummary,
+        matchReasons: Array.isArray(body.matchReasons) ? body.matchReasons : undefined,
+        mismatchReasons: Array.isArray(body.mismatchReasons) ? body.mismatchReasons : undefined,
       });
       const createdRecord = created as { id?: string };
       return NextResponse.json({ ok: true, id: createdRecord.id ?? "" });

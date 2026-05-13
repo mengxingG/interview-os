@@ -12,7 +12,7 @@ const gemini = createOpenAI({
   baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
 });
 
-export type ModelType = "fast" | "deepseek-pro" | "deep" | "pro";
+export type ModelType = "fast" | "deepseek-pro" | "deep" | "pro" | "vision";
 
 export function getModel(type: ModelType = "fast") {
   if (type === "pro") {
@@ -20,6 +20,10 @@ export function getModel(type: ModelType = "fast") {
   }
   if (type === "deep") {
     return gemini(process.env.GEMINI_FLASH_MODEL || "gemini-2.5-flash");
+  }
+  if (type === "vision") {
+    // 高性价比视觉模型，适合图片 OCR + JD 分析
+    return gemini(process.env.GEMINI_VISION_MODEL || "gemini-1.5-flash");
   }
   if (type === "deepseek-pro") {
     return deepseek.chat(process.env.DEEPSEEK_PRO_MODEL || "deepseek-v4-pro");

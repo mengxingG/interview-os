@@ -1985,7 +1985,10 @@ function toJobRow(item: unknown): JobRow {
   }) ?? "Status";
   const companyKey = Object.keys(properties).find((key) => key.toLowerCase().includes("company")) ?? "Company";
   const roleKey = Object.keys(properties).find((key) => key.toLowerCase().includes("role")) ?? "Role";
-  const matchScoreKey = Object.keys(properties).find((key) => key.toLowerCase().includes("match") || key.toLowerCase().includes("score")) ?? "Match Score";
+  const matchScoreKey = Object.keys(properties).find((key) => {
+    const prop = asRecord(properties[key]);
+    return prop.type === "number" && (key.toLowerCase().includes("match") || key.toLowerCase().includes("score"));
+  }) ?? "Match Score";
   const locationKey = Object.keys(properties).find((key) => key.toLowerCase().includes("location")) ?? "Location";
   const urlKey = Object.keys(properties).find((key) => key.toLowerCase().includes("url")) ?? "URL";
   const jdTextKey = Object.keys(properties).find((key) => key.toLowerCase().includes("jd") || key.toLowerCase().includes("job description")) ?? "JD Text";
@@ -2101,6 +2104,9 @@ export async function addJob(data: {
   platform?: string;
   salaryRange?: string;
   notes?: string;
+  jdSummary?: string;
+  matchReasons?: string[];
+  mismatchReasons?: string[];
 }) {
   ensureJobsDbId();
   const available = await getJobsPropertyNames();
@@ -2121,6 +2127,12 @@ export async function addJob(data: {
   const platformKey = pickFirstExisting(["Platform"], available);
   const salaryKey = Object.keys(defs).find((key) => key.toLowerCase().includes("salary"));
   const notesKey = Object.keys(defs).find((key) => key.toLowerCase().includes("notes") || key.toLowerCase().includes("备注"));
+  const jdSummaryKey = Object.keys(defs).find((key) => key.toLowerCase().includes("jd summary") || (key.toLowerCase().includes("summary") && !key.toLowerCase().includes("match")));
+  const matchReasonsKey = Object.keys(defs).find((key) => {
+    const lower = key.toLowerCase();
+    return (lower.includes("match reasons") || lower.includes("match_reasons")) && !lower.includes("mismatch");
+  });
+  const mismatchReasonsKey = Object.keys(defs).find((key) => key.toLowerCase().includes("mismatch reasons") || key.toLowerCase().includes("mismatch_reasons"));
 
   const properties: Record<string, unknown> = {
     [titleKey]: { title: [{ text: { content: data.title } }] },
@@ -2160,6 +2172,15 @@ export async function addJob(data: {
   }
   if (notesKey && data.notes) {
     properties[notesKey] = { rich_text: [{ text: { content: data.notes } }] };
+  }
+  if (jdSummaryKey && data.jdSummary) {
+    properties[jdSummaryKey] = { rich_text: [{ text: { content: data.jdSummary } }] };
+  }
+  if (matchReasonsKey && data.matchReasons && data.matchReasons.length > 0) {
+    properties[matchReasonsKey] = { rich_text: [{ text: { content: data.matchReasons.join("\n• ") } }] };
+  }
+  if (mismatchReasonsKey && data.mismatchReasons && data.mismatchReasons.length > 0) {
+    properties[mismatchReasonsKey] = { rich_text: [{ text: { content: data.mismatchReasons.join("\n• ") } }] };
   }
 
   return notion.pages.create({

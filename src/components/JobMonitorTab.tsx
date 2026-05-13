@@ -217,7 +217,6 @@ export function JobMonitorTab({ onNavigateToDecode, onNavigateToResearch }: JobM
   const kanbanRef = useRef<HTMLDivElement>(null);
   const autoScrollRef = useRef<number | null>(null);
 
-  // 加载数据 — 先尝试 API，失败则用 Mock
   const loadJobs = useCallback(async () => {
     setLoading(true);
     setError("");
@@ -248,7 +247,6 @@ export function JobMonitorTab({ onNavigateToDecode, onNavigateToResearch }: JobM
     void loadJobs();
   }, [loadJobs]);
 
-  // 统计
   const stats = useMemo(() => {
     const now = new Date();
     const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -263,7 +261,6 @@ export function JobMonitorTab({ onNavigateToDecode, onNavigateToResearch }: JobM
     return { thisWeek, highMatch, pending, decoded, applied, total: jobs.length };
   }, [jobs]);
 
-  // 按状态分组
   const grouped = useMemo(() => {
     const map: Record<string, JobRow[]> = {};
     for (const status of STATUS_COLUMNS) map[status] = [];
@@ -274,12 +271,10 @@ export function JobMonitorTab({ onNavigateToDecode, onNavigateToResearch }: JobM
     return map;
   }, [jobs]);
 
-  // 各列数量
   const columnCounts = useMemo(() => {
     return STATUS_COLUMNS.map((s) => grouped[s].length);
   }, [grouped]);
 
-  // 检测可见列
   const updateVisibleColumns = useCallback(() => {
     const el = kanbanRef.current;
     if (!el) return;
@@ -310,14 +305,12 @@ export function JobMonitorTab({ onNavigateToDecode, onNavigateToResearch }: JobM
     };
   }, [updateVisibleColumns, jobs]);
 
-  // 拖拽处理
   const handleDragStart = (jobId: string) => {
     setDragJobId(jobId);
   };
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
-    // 边缘自动滚动
     const el = kanbanRef.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
@@ -350,70 +343,37 @@ export function JobMonitorTab({ onNavigateToDecode, onNavigateToResearch }: JobM
       setDragJobId(null);
       return;
     }
-
     setJobs((prev) =>
       prev.map((j) => (j.id === dragJobId ? { ...j, status: targetStatus } : j)),
     );
     setDragJobId(null);
-
     if (!useMock) {
       try {
         const res = await fetch("/api/notion", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            resource: "jobs",
-            action: "update-status",
-            pageId: dragJobId,
-            status: targetStatus,
-          }),
+          body: JSON.stringify({ resource: "jobs", action: "update-status", pageId: dragJobId, status: targetStatus }),
         });
-        if (!res.ok) {
-          void loadJobs();
-        }
-      } catch {
-        void loadJobs();
-      }
+        if (!res.ok) void loadJobs();
+      } catch { void loadJobs(); }
     }
   };
 
   const handleDelete = async (jobId: string) => {
     setJobs((prev) => prev.filter((j) => j.id !== jobId));
     if (!useMock) {
-      try {
-        await fetch("/api/notion", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ resource: "jobs", action: "delete", pageId: jobId }),
-        });
-      } catch {
-        void loadJobs();
-      }
+      try { await fetch("/api/notion", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ resource: "jobs", action: "delete", pageId: jobId }) }); }
+      catch { void loadJobs(); }
     }
   };
 
   const handleAbandon = async (jobId: string) => {
-    setJobs((prev) =>
-      prev.map((j) => (j.id === jobId ? { ...j, status: "已放弃" as JobStatus } : j)),
-    );
+    setJobs((prev) => prev.map((j) => (j.id === jobId ? { ...j, status: "已放弃" as JobStatus } : j)));
     if (!useMock) {
       try {
-        const res = await fetch("/api/notion", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            resource: "jobs",
-            action: "update-status",
-            pageId: jobId,
-            status: "已放弃",
-          }),
-        });
-        if (!res.ok) {
-          void loadJobs();
-        }
-      } catch {
-        void loadJobs();
-      }
+        const res = await fetch("/api/notion", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ resource: "jobs", action: "update-status", pageId: jobId, status: "已放弃" }) });
+        if (!res.ok) void loadJobs();
+      } catch { void loadJobs(); }
     }
   };
 
@@ -434,39 +394,23 @@ export function JobMonitorTab({ onNavigateToDecode, onNavigateToResearch }: JobM
     if (!el) return;
     const columns = el.querySelectorAll<HTMLElement>("[data-column-index]");
     const target = columns[index];
-    if (target) {
-      target.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "start" });
-    }
+    if (target) target.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "start" });
   };
 
   return (
     <div className="flex flex-col gap-4">
-      {/* ===== 顶部横幅 ===== */}
       <section className="neon-card relative overflow-hidden rounded-2xl p-5">
         <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(transparent_0%,rgba(168,85,247,0.03)_50%,transparent_100%)] bg-[length:100%_4px]" />
         <div className="relative z-10 flex items-center justify-between">
           <div>
-            <h2 className="neon-text text-lg font-bold text-purple-200">
-              ⚡ 岗位监控看板
-            </h2>
-            <p className="mt-1 text-xs text-zinc-500">
-              {useMock ? "🔄 演示模式 · 使用 Mock 数据展示" : "📡 实时同步 Notion 数据库"}
-            </p>
+            <h2 className="neon-text text-lg font-bold text-purple-200">⚡ 岗位监控看板</h2>
+            <p className="mt-1 text-xs text-zinc-500">{useMock ? "🔄 演示模式 · 使用 Mock 数据展示" : "📡 实时同步 Notion 数据库"}</p>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => void loadJobs()}
-              disabled={loading}
-              className="rounded-lg border border-purple-500/30 bg-purple-500/10 px-3 py-1.5 text-xs text-purple-200 transition hover:bg-purple-500/20 disabled:opacity-50"
-            >
-              {loading ? "⟳ 刷新中" : "↻ 刷新"}
-            </button>
+            <button type="button" onClick={() => void loadJobs()} disabled={loading} className="rounded-lg border border-purple-500/30 bg-purple-500/10 px-3 py-1.5 text-xs text-purple-200 transition hover:bg-purple-500/20 disabled:opacity-50">{loading ? "⟳ 刷新中" : "↻ 刷新"}</button>
           </div>
         </div>
       </section>
-
-      {/* ===== StatsBar ===== */}
       <section className="neon-card rounded-2xl px-4 py-2.5">
         <div className="grid grid-cols-5 gap-2">
           <StatCard label="本周新增" value={stats.thisWeek} color="text-blue-300" icon="🆕" />
@@ -476,11 +420,7 @@ export function JobMonitorTab({ onNavigateToDecode, onNavigateToResearch }: JobM
           <StatCard label="已投递" value={stats.applied} color="text-violet-300" icon="📤" />
         </div>
       </section>
-
-      {/* ===== ManualEntry ===== */}
       <ManualEntry onSaved={() => void loadJobs()} useMock={useMock} />
-
-      {/* ===== 状态流转轴 (StatusNavBar) ===== */}
       <section className="neon-card rounded-xl px-3 py-2">
         <div className="flex items-center gap-1">
           {STATUS_COLUMNS.map((status, idx) => {
@@ -488,180 +428,83 @@ export function JobMonitorTab({ onNavigateToDecode, onNavigateToResearch }: JobM
             const isVisible = visibleColumns.has(idx);
             const count = columnCounts[idx];
             return (
-              <button
-                key={status}
-                type="button"
-                onClick={() => scrollToColumn(idx)}
-                className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-xs font-medium transition-all ${
-                  isVisible
-                    ? `${meta.accent} ${meta.header} ring-1 ${meta.border}`
-                    : "text-zinc-600 hover:text-zinc-400 hover:bg-zinc-800/30"
-                }`}
-              >
+              <button key={status} type="button" onClick={() => scrollToColumn(idx)} className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-xs font-medium transition-all ${isVisible ? `${meta.accent} ${meta.header} ring-1 ${meta.border}` : "text-zinc-600 hover:text-zinc-400 hover:bg-zinc-800/30"}`}>
                 <span>{meta.icon}</span>
                 <span className="hidden sm:inline">{status}</span>
-                <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${
-                  isVisible ? meta.accent : "bg-zinc-800/50 text-zinc-500"
-                }`}>
-                  {count}
-                </span>
-                {idx < STATUS_COLUMNS.length - 1 && (
-                  <span className="ml-1 text-zinc-700">→</span>
-                )}
+                <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${isVisible ? meta.accent : "bg-zinc-800/50 text-zinc-500"}`}>{count}</span>
+                {idx < STATUS_COLUMNS.length - 1 && <span className="ml-1 text-zinc-700">→</span>}
               </button>
             );
           })}
         </div>
       </section>
-
-      {/* ===== KanbanBoard ===== */}
       {error && (
         <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
           {error}
-          <button
-            type="button"
-            onClick={() => void loadJobs()}
-            className="ml-2 underline hover:text-red-100"
-          >
-            重试
-          </button>
+          <button type="button" onClick={() => void loadJobs()} className="ml-2 underline hover:text-red-100">重试</button>
         </div>
       )}
-
       {loading && jobs.length === 0 ? (
-        <div className="flex items-center justify-center py-12 text-sm text-zinc-500">
-          <span className="animate-pulse">加载岗位数据中...</span>
-        </div>
+        <div className="flex items-center justify-center py-12 text-sm text-zinc-500"><span className="animate-pulse">加载岗位数据中...</span></div>
       ) : (
         <div className="relative">
-          {/* 看板容器 */}
-          <div
-            ref={kanbanRef}
-            onDragOver={handleDragOver}
-            onDragEnd={handleDragEnd}
-            onMouseUp={handleDragEnd}
-            className="flex flex-nowrap overflow-x-auto pb-6 pt-1 scrollbar-thin scrollbar-track-zinc-900 scrollbar-thumb-zinc-700"
-            style={{ scrollBehavior: "smooth" }}
-          >
+          <div ref={kanbanRef} onDragOver={handleDragOver} onDragEnd={handleDragEnd} onMouseUp={handleDragEnd} className="flex flex-nowrap overflow-x-auto pb-6 pt-1 scrollbar-thin scrollbar-track-zinc-900 scrollbar-thumb-zinc-700" style={{ scrollBehavior: "smooth" }}>
             {STATUS_COLUMNS.map((status, idx) => (
-              <div
-                key={status}
-                data-column-index={idx}
-                className="min-w-[340px] mr-5 first:ml-0"
-              >
-                <KanbanColumn
-                  status={status}
-                  jobs={grouped[status]}
-                  onDragOver={handleDragOver}
-                  onDrop={() => void handleDrop(status)}
-                  onDragStart={handleDragStart}
-                  expandedJobId={expandedJobId}
-                  setExpandedJobId={setExpandedJobId}
-                  matchColor={matchColor}
-                  matchBorder={matchBorder}
-                  onDelete={handleDelete}
-                  onAbandon={handleAbandon}
-                  onNavigateToDecode={onNavigateToDecode}
-                  onNavigateToResearch={onNavigateToResearch}
-                  isDragging={dragJobId !== null}
-                />
+              <div key={status} data-column-index={idx} className="min-w-[340px] mr-5 first:ml-0">
+                <KanbanColumn status={status} jobs={grouped[status]} onDrop={() => void handleDrop(status)} onDragStart={handleDragStart} expandedJobId={expandedJobId} setExpandedJobId={setExpandedJobId} matchColor={matchColor} matchBorder={matchBorder} onDelete={handleDelete} onAbandon={handleAbandon} onNavigateToDecode={onNavigateToDecode} onNavigateToResearch={onNavigateToResearch} isDragging={dragJobId !== null} />
               </div>
             ))}
           </div>
-
-          {/* 右侧渐变蒙层 — 提示右侧有更多内容 */}
           <div className="pointer-events-none absolute inset-y-0 right-0 w-16 bg-gradient-to-l from-zinc-950/60 to-transparent" />
         </div>
       )}
-
-      {/* ===== Footer ===== */}
       <footer className="text-center text-xs text-zinc-600">
-        <p>
-          {useMock ? "🎮 演示数据 · 拖拽卡片可更改状态" : "📡 数据来源：Notion Jobs Database"}
-          {lastUpdated ? ` · 最后更新：${lastUpdated}` : ""}
-        </p>
-        <p className="mt-0.5">
-          点击卡片展开操作栏 · 匹配度基于 AI 分析 · 赛博朋克引擎 v2.0
-        </p>
+        <p>{useMock ? "🎮 演示数据 · 拖拽卡片可更改状态" : "📡 数据来源：Notion Jobs Database"}{lastUpdated ? ` · 最后更新：${lastUpdated}` : ""}</p>
+        <p className="mt-0.5">点击卡片展开操作栏 · 匹配度基于 AI 分析 · 赛博朋克引擎 v2.0</p>
       </footer>
     </div>
   );
 }
 
-// ==========================================
-// 统计卡片
-// ==========================================
 function StatCard({ label, value, color, icon }: { label: string; value: number; color: string; icon: string }) {
   return (
     <div className="group relative overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950/50 px-2.5 py-2 transition hover:border-purple-500/30">
       <div className="pointer-events-none absolute -right-4 -top-4 h-10 w-10 rounded-full bg-purple-500/5 opacity-0 transition group-hover:opacity-100" />
       <p className={`text-lg font-bold leading-tight ${color}`}>{value}</p>
-      <p className="mt-0.5 flex items-center gap-1 text-[10px] text-zinc-500">
-        <span>{icon}</span>
-        <span>{label}</span>
-      </p>
+      <p className="mt-0.5 flex items-center gap-1 text-[10px] text-zinc-500"><span>{icon}</span><span>{label}</span></p>
     </div>
   );
 }
 
-// ==========================================
-// 手动录入区
-// ==========================================
 function ManualEntry({ onSaved, useMock }: { onSaved: () => void; useMock: boolean }) {
   const [input, setInput] = useState("");
   const [saving, setSaving] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [aiResult, setAiResult] = useState<{
-    title?: string;
-    company?: string;
-    role?: string;
-    matchScore?: number;
-    platform?: string;
-    location?: string;
-    salaryRange?: string;
+    title?: string; company?: string; role?: string; matchScore?: number; platform?: string; location?: string; salaryRange?: string;
+    jdSummary?: string; requirements?: string[]; advantages?: string[]; disadvantages?: string[]; matchReasons?: string[]; mismatchReasons?: string[];
   } | null>(null);
   const [showAiResult, setShowAiResult] = useState(false);
 
   const handleAnalyze = async () => {
     const text = input.trim();
     if (!text) return;
-    setAnalyzing(true);
-    setAiResult(null);
-    setShowAiResult(false);
+    setAnalyzing(true); setAiResult(null); setShowAiResult(false);
     try {
       const res = await fetch("/api/jd/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ jdText: text }),
       });
       if (res.ok) {
-        const data = (await res.json()) as {
-          title?: string;
-          company?: string;
-          role?: string;
-          matchScore?: number;
-          platform?: string;
-          location?: string;
-          salaryRange?: string;
-        };
+        const data = await res.json() as typeof aiResult;
         setAiResult(data);
       } else {
         const lines = text.split("\n").filter(Boolean);
-        setAiResult({
-          title: lines[0]?.slice(0, 60) || "未命名岗位",
-          company: "",
-          role: "",
-          matchScore: undefined,
-        });
+        setAiResult({ title: lines[0]?.slice(0, 60) || "未命名岗位", company: "", role: "", matchScore: undefined });
       }
     } catch {
-      setAiResult({
-        title: input.slice(0, 60) || "未命名岗位",
-      });
-    } finally {
-      setAnalyzing(false);
-      setShowAiResult(true);
-    }
+      setAiResult({ title: input.slice(0, 60) || "未命名岗位" });
+    } finally { setAnalyzing(false); setShowAiResult(true); }
   };
 
   const handleSave = async () => {
@@ -670,90 +513,50 @@ function ManualEntry({ onSaved, useMock }: { onSaved: () => void; useMock: boole
     setSaving(true);
     try {
       const payload: Record<string, unknown> = {
-        resource: "jobs",
-        action: "create",
-        title: aiResult?.title || text.slice(0, 60),
-        company: aiResult?.company || "",
-        role: aiResult?.role || "",
-        matchScore: aiResult?.matchScore,
-        status: "新发现",
-        location: aiResult?.location || "",
-        platform: aiResult?.platform || "",
-        salaryRange: aiResult?.salaryRange || "",
-        jdText: text,
+        resource: "jobs", action: "create",
+        title: aiResult?.title || text.slice(0, 60), company: aiResult?.company || "", role: aiResult?.role || "",
+        matchScore: aiResult?.matchScore, status: "新发现", location: aiResult?.location || "", platform: aiResult?.platform || "",
+        salaryRange: aiResult?.salaryRange || "", jdText: text, jdSummary: aiResult?.jdSummary || "",
+        requirements: aiResult?.requirements || [], advantages: aiResult?.advantages || [], disadvantages: aiResult?.disadvantages || [],
+        matchReasons: aiResult?.matchReasons || [], mismatchReasons: aiResult?.mismatchReasons || [],
       };
-      const res = await fetch("/api/notion", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      if (res.ok) {
-        setInput("");
-        setAiResult(null);
-        setShowAiResult(false);
-        onSaved();
-      }
-    } catch (err) {
-      console.error("保存失败", err);
-    } finally {
-      setSaving(false);
-    }
+      const res = await fetch("/api/notion", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      if (res.ok) { setInput(""); setAiResult(null); setShowAiResult(false); onSaved(); }
+    } catch (err) { console.error("保存失败", err); }
+    finally { setSaving(false); }
   };
 
   return (
     <section className="neon-card rounded-2xl p-4">
-      <h3 className="mb-2 flex items-center gap-2 text-sm font-medium text-zinc-200">
-        <span>📝</span> 手动录入岗位
-        {useMock && <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-300">演示模式</span>}
-      </h3>
+      <h3 className="mb-2 flex items-center gap-2 text-sm font-medium text-zinc-200"><span>📝</span> 手动录入岗位{useMock && <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-300">演示模式</span>}</h3>
       <div className="flex flex-col gap-2">
-        <textarea
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="粘贴岗位 URL 或 JD 文本..."
-          rows={3}
-          className="w-full rounded-lg border border-zinc-800 bg-zinc-950/70 p-3 text-sm text-zinc-100 placeholder-zinc-600 transition focus:border-cyan-500/50 focus:outline-none focus:ring-1 focus:ring-cyan-500/20"
-        />
+        <textarea value={input} onChange={(e) => setInput(e.target.value)} placeholder="粘贴岗位 URL 或 JD 文本..." rows={3} className="w-full rounded-lg border border-zinc-800 bg-zinc-950/70 p-3 text-sm text-zinc-100 placeholder-zinc-600 transition focus:border-cyan-500/50 focus:outline-none focus:ring-1 focus:ring-cyan-500/20" />
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => void handleAnalyze()}
-            disabled={!input.trim() || analyzing}
-            className="rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-100 transition hover:bg-cyan-500/20 disabled:opacity-50"
-          >
-            {analyzing ? "⟳ AI 分析中..." : "🔍 AI 分析"}
-          </button>
-          <button
-            type="button"
-            onClick={() => void handleSave()}
-            disabled={!input.trim() || saving}
-            className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-100 transition hover:bg-emerald-500/20 disabled:opacity-50"
-          >
-            {saving ? "⟳ 保存中..." : "💾 保存到 Notion"}
-          </button>
+          <button type="button" onClick={() => void handleAnalyze()} disabled={!input.trim() || analyzing} className="rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-100 transition hover:bg-cyan-500/20 disabled:opacity-50">{analyzing ? "⟳ AI 分析中..." : "🔍 AI 分析"}</button>
+          <button type="button" onClick={() => void handleSave()} disabled={!input.trim() || saving} className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-100 transition hover:bg-emerald-500/20 disabled:opacity-50">{saving ? "⟳ 保存中..." : "💾 保存到 Notion"}</button>
         </div>
         {showAiResult && aiResult && (
-          <div className="mt-2 animate-in rounded-lg border border-cyan-500/20 bg-cyan-500/5 p-3 text-xs text-zinc-300">
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <span className="text-zinc-500">岗位：</span>
-                <span className="text-cyan-200">{aiResult.title || "-"}</span>
-              </div>
-              <div>
-                <span className="text-zinc-500">公司：</span>
-                <span className="text-cyan-200">{aiResult.company || "-"}</span>
-              </div>
-              <div>
-                <span className="text-zinc-500">匹配度：</span>
-                <span className={typeof aiResult.matchScore === "number" && aiResult.matchScore >= 80 ? "text-emerald-300" : "text-amber-300"}>
-                  {typeof aiResult.matchScore === "number" ? `${aiResult.matchScore}分` : "-"}
-                </span>
-              </div>
-              <div>
-                <span className="text-zinc-500">平台：</span>
-                <span>{aiResult.platform || "-"}</span>
-              </div>
-            </div>
+          <div className="mt-2 rounded-lg border border-cyan-500/20 bg-cyan-500/5 p-3 text-xs text-zinc-300">
+            <div className="mb-2 flex items-center gap-2"><span className="font-bold text-cyan-200">{aiResult.title || "未命名岗位"}</span>{aiResult.company && <span className="text-zinc-400">@{aiResult.company}</span>}{aiResult.matchScore !== undefined && aiResult.matchScore !== null && <span className={`ml-auto rounded-full px-2 py-0.5 text-[10px] font-bold ${aiResult.matchScore >= 80 ? "bg-emerald-500/20 text-emerald-300" : aiResult.matchScore >= 60 ? "bg-amber-500/20 text-amber-300" : "bg-zinc-500/20 text-zinc-400"}`}>{aiResult.matchScore}分</span>}</div>
+            {aiResult.salaryRange && <p className="mb-1"><span className="text-zinc-500">💰 薪资：</span><span className="text-emerald-300">{aiResult.salaryRange}</span></p>}
+            {aiResult.location && <p className="mb-1"><span className="text-zinc-500">📍 地点：</span>{aiResult.location}</p>}
+            {aiResult.platform && <p className="mb-1"><span className="text-zinc-500">📡 平台：</span>{aiResult.platform}</p>}
+            {aiResult.jdSummary && <p className="mb-1"><span className="text-zinc-500">📋 摘要：</span>{aiResult.jdSummary}</p>}
+            {aiResult.requirements && aiResult.requirements.length > 0 && (
+              <div className="mb-1"><span className="text-zinc-500">📌 要求：</span><ul className="ml-3 list-disc">{aiResult.requirements.map((r, i) => <li key={i} className="text-zinc-400">{r}</li>)}</ul></div>
+            )}
+            {aiResult.advantages && aiResult.advantages.length > 0 && (
+              <div className="mb-1"><span className="text-emerald-400">✅ 优点：</span><ul className="ml-3 list-disc">{aiResult.advantages.map((a, i) => <li key={i} className="text-emerald-300/70">{a}</li>)}</ul></div>
+            )}
+            {aiResult.disadvantages && aiResult.disadvantages.length > 0 && (
+              <div className="mb-1"><span className="text-red-400">⚠️ 缺点：</span><ul className="ml-3 list-disc">{aiResult.disadvantages.map((d, i) => <li key={i} className="text-red-300/70">{d}</li>)}</ul></div>
+            )}
+            {aiResult.matchReasons && aiResult.matchReasons.length > 0 && (
+              <div className="mb-1"><span className="text-cyan-400">🎯 匹配理由：</span><ul className="ml-3 list-disc">{aiResult.matchReasons.map((m, i) => <li key={i} className="text-cyan-300/70">{m}</li>)}</ul></div>
+            )}
+            {aiResult.mismatchReasons && aiResult.mismatchReasons.length > 0 && (
+              <div className="mb-1"><span className="text-amber-400">⚠️ 不匹配项：</span><ul className="ml-3 list-disc">{aiResult.mismatchReasons.map((m, i) => <li key={i} className="text-amber-300/70">{m}</li>)}</ul></div>
+            )}
           </div>
         )}
       </div>
@@ -762,12 +565,11 @@ function ManualEntry({ onSaved, useMock }: { onSaved: () => void; useMock: boole
 }
 
 // ==========================================
-// 看板列
+// KanbanColumn 组件
 // ==========================================
 function KanbanColumn({
   status,
   jobs,
-  onDragOver,
   onDrop,
   onDragStart,
   expandedJobId,
@@ -782,289 +584,104 @@ function KanbanColumn({
 }: {
   status: JobStatus;
   jobs: JobRow[];
-  onDragOver: (e: React.DragEvent) => void;
   onDrop: () => void;
-  onDragStart: (jobId: string) => void;
+  onDragStart: (id: string) => void;
   expandedJobId: string | null;
   setExpandedJobId: (id: string | null) => void;
   matchColor: (score: number) => string;
   matchBorder: (score: number) => string;
-  onDelete: (jobId: string) => void;
-  onAbandon: (jobId: string) => void;
+  onDelete: (id: string) => void;
+  onAbandon: (id: string) => void;
   onNavigateToDecode?: (job: JobRow) => void;
   onNavigateToResearch?: (job: JobRow) => void;
   isDragging: boolean;
 }) {
-  const colors = STATUS_META[status];
+  const meta = STATUS_META[status];
+  const [dragOver, setDragOver] = useState(false);
 
   return (
     <div
-      onDragOver={onDragOver}
-      onDrop={() => onDrop()}
-      className={`flex flex-col gap-2 rounded-xl border ${colors.border} ${colors.bg} p-3 backdrop-blur-sm transition-all ${
-        isDragging ? "min-h-[200px]" : ""
-      }`}
+      onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={() => { setDragOver(false); onDrop(); }}
+      className={`flex h-full flex-col rounded-2xl border ${meta.border} ${meta.bg} transition-all ${dragOver ? "ring-2 ring-purple-500/40" : ""}`}
     >
-      <div className={`mb-1 flex items-center justify-between rounded-lg ${colors.accent} px-2 py-1.5`}>
-        <h4 className={`text-xs font-semibold uppercase tracking-wider ${colors.header}`}>
-          {colors.icon} {status}
-        </h4>
-        <span className={`rounded-full ${colors.accent} px-2 py-0.5 text-xs ${colors.header}`}>
-          {jobs.length}
-        </span>
+      {/* 列头 */}
+      <div className={`flex items-center justify-between rounded-t-2xl border-b ${meta.border} ${meta.accent} px-4 py-2.5`}>
+        <div className="flex items-center gap-2">
+          <span className="text-lg">{meta.icon}</span>
+          <span className={`text-sm font-bold ${meta.header}`}>{status}</span>
+          <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${meta.accent} ${meta.header}`}>{jobs.length}</span>
+        </div>
       </div>
 
-      {jobs.length === 0 ? (
-        <div className="flex items-center justify-center py-8 text-xs text-zinc-600">
-          <div className="flex flex-col items-center gap-1">
-            <span className="text-lg opacity-30">⬡</span>
-            <span>拖拽卡片到此</span>
+      {/* 卡片列表 */}
+      <div className="flex-1 space-y-2 overflow-y-auto p-3 scrollbar-thin scrollbar-track-zinc-900 scrollbar-thumb-zinc-700">
+        {jobs.length === 0 && (
+          <div className="flex items-center justify-center py-8 text-[10px] text-zinc-600">
+            <span>暂无岗位</span>
           </div>
-        </div>
-      ) : (
-        <div className="flex flex-col gap-2">
-          {jobs.map((job) => (
-            <JobCard
+        )}
+        {jobs.map((job) => {
+          const isExpanded = expandedJobId === job.id;
+          return (
+            <div
               key={job.id}
-              job={job}
-              onDragStart={onDragStart}
-              isExpanded={expandedJobId === job.id}
-              onToggle={() =>
-                setExpandedJobId(expandedJobId === job.id ? null : job.id)
-              }
-              matchColor={matchColor}
-              matchBorder={matchBorder}
-              onDelete={onDelete}
-              onAbandon={onAbandon}
-              onNavigateToDecode={onNavigateToDecode}
-              onNavigateToResearch={onNavigateToResearch}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ==========================================
-// 🎴 赛博朋克岗位卡片
-// ==========================================
-function JobCard({
-  job,
-  onDragStart,
-  isExpanded,
-  onToggle,
-  matchColor,
-  matchBorder,
-  onDelete,
-  onAbandon,
-  onNavigateToDecode,
-  onNavigateToResearch,
-}: {
-  job: JobRow;
-  onDragStart: (jobId: string) => void;
-  isExpanded: boolean;
-  onToggle: () => void;
-  matchColor: (score: number) => string;
-  matchBorder: (score: number) => string;
-  onDelete: (jobId: string) => void;
-  onAbandon: (jobId: string) => void;
-  onNavigateToDecode?: (job: JobRow) => void;
-  onNavigateToResearch?: (job: JobRow) => void;
-}) {
-  const [isAiExpanded, setIsAiExpanded] = useState(false);
-  const hasHighMatch = job.matchScore >= 80;
-  const companyInitial = (job.company || "?")[0];
-  const hasAiAssessment = !!(job.matchReasons || job.mismatchReasons);
-
-  const matchLabel = (score: number) => {
-    if (score >= 80) return { text: "🔥 高匹配", color: "text-emerald-300 border-emerald-500/30 bg-emerald-500/10" };
-    if (score >= 60) return { text: "📊 中匹配", color: "text-amber-300 border-amber-500/30 bg-amber-500/10" };
-    return { text: "📉 低匹配", color: "text-zinc-400 border-zinc-600/30 bg-zinc-500/10" };
-  };
-
-  const ml = matchLabel(job.matchScore);
-
-  return (
-    <div
-      draggable
-      onDragStart={() => onDragStart(job.id)}
-      onClick={onToggle}
-      className={`group relative cursor-grab overflow-hidden rounded-lg border bg-zinc-950/90 p-5 text-xs transition-all active:cursor-grabbing ${
-        hasHighMatch
-          ? "border-emerald-500/40 shadow-[0_0_15px_rgba(16,185,129,0.08)]"
-          : "border-zinc-700/50 hover:border-zinc-600"
-      } ${matchBorder(job.matchScore)}`}
-    >
-      {/* 装饰扫描线 */}
-      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(transparent_0%,rgba(168,85,247,0.02)_50%,transparent_100%)] bg-[length:100%_3px] opacity-0 transition group-hover:opacity-100" />
-
-      {/* 高匹配发光角标 */}
-      {hasHighMatch && (
-        <div className="pointer-events-none absolute -right-6 -top-6 h-12 w-12 rotate-45 bg-emerald-500/10 blur-xl" />
-      )}
-
-      <div className="relative z-10">
-        {/* 匹配度 - 右上角绝对定位 */}
-        <div className={`absolute right-0 top-0 rounded-md border px-1.5 py-0.5 text-[10px] font-bold ${matchColor(job.matchScore)}`}>
-          {job.matchScore > 0 ? `${job.matchScore}%` : "—"}
-        </div>
-
-        {/* 头部：公司 Logo + 名称 */}
-        <div className="flex items-start gap-2 pr-14">
-          <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-xs font-bold ${
-            hasHighMatch
-              ? "bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-500/30"
-              : "bg-purple-500/15 text-purple-300 ring-1 ring-purple-500/20"
-          }`}>
-            {companyInitial}
-          </div>
-          <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-zinc-100">
-              {job.company || "未知公司"}
-            </p>
-            <p className="truncate text-[11px] text-zinc-400">
-              {job.title}
-            </p>
-          </div>
-        </div>
-
-      {/* JD Summary — 默认3行省略，hover 展开完整内容 */}
-      {job.jdSummary && (
-        <p
-          className="mt-3 mb-3 line-clamp-3 text-sm leading-relaxed text-gray-300 transition-all duration-200 hover:line-clamp-none"
-          style={{ fontSize: "14px", lineHeight: "1.6" }}
-        >
-          {job.jdSummary}
-        </p>
-      )}
-
-        {/* 地点 + 平台 */}
-        <div className="mt-2 flex items-center gap-2">
-          {job.location && (
-            <span className="flex items-center gap-0.5 text-[10px] text-zinc-500">
-              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-              {job.location}
-            </span>
-          )}
-          {job.platform && (
-            <span className="rounded bg-zinc-800/80 px-1.5 py-0.5 text-[9px] text-zinc-500">
-              {job.platform}
-            </span>
-          )}
-        </div>
-
-        {/* 薪资 + 匹配度标签 */}
-        <div className="mt-2 flex items-center gap-2">
-          {job.salaryRange && (
-            <span className="flex items-center gap-1 rounded-md bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-200/90">
-              <span>💰</span>
-              <span>{job.salaryRange}</span>
-            </span>
-          )}
-          <span className={`rounded border px-1.5 py-0.5 text-[9px] ${ml.color}`}>
-            {ml.text}
-          </span>
-        </div>
-
-        {/* ⚡ AI 深度评估 — 折叠展开按钮 */}
-        {hasAiAssessment && (
-          <div className="mt-3">
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setIsAiExpanded((prev) => !prev);
-              }}
-              className="group/ai flex w-full items-center justify-center gap-1.5 rounded-md border border-cyan-500/20 bg-cyan-500/[0.04] px-2 py-1.5 text-[11px] text-cyan-300/70 transition-all hover:border-cyan-500/40 hover:bg-cyan-500/[0.08] hover:text-cyan-200"
+              draggable
+              onDragStart={() => onDragStart(job.id)}
+              onClick={() => setExpandedJobId(isExpanded ? null : job.id)}
+              className={`group cursor-grab rounded-xl border border-zinc-800 bg-zinc-950/70 p-3 transition-all hover:border-zinc-700 active:cursor-grabbing ${matchBorder(job.matchScore)} ${isExpanded ? "ring-1 ring-purple-500/40" : ""}`}
             >
-              <span className="transition-transform duration-200 group-hover/ai:scale-110">⚡</span>
-              <span>AI 深度评估</span>
-              <svg
-                className={`h-3 w-3 transition-transform duration-200 ${isAiExpanded ? "rotate-180" : ""}`}
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
-
-            {/* 展开面板 */}
-            {isAiExpanded && (
-              <div className="mt-2 space-y-2 rounded-lg bg-black/50 p-3 shadow-[inset_0_1px_3px_rgba(0,0,0,0.5)]">
-                {job.matchReasons && (
-                  <div className="border-l-2 border-emerald-500/60 pl-3">
-                    <p className="mb-1 text-[11px] font-semibold text-emerald-400">✅ 核心优势</p>
-                    <p className="whitespace-pre-wrap text-[11px] leading-relaxed text-emerald-100/80">{job.matchReasons}</p>
-                  </div>
-                )}
-                {job.mismatchReasons && (
-                  <div className="border-l-2 border-orange-500/60 pl-3">
-                    <p className="mb-1 text-[11px] font-semibold text-orange-400">⚠️ 潜在风险</p>
-                    <p className="whitespace-pre-wrap text-[11px] leading-relaxed text-orange-100/80">{job.mismatchReasons}</p>
-                  </div>
+              {/* 标题行 */}
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[15px] font-semibold leading-snug text-zinc-100">{job.title || "未命名岗位"}</p>
+                  {job.company && <p className="mt-0.5 truncate text-xs leading-relaxed text-zinc-500">{job.company}</p>}
+                </div>
+                {job.matchScore !== undefined && job.matchScore !== null && (
+                  <span className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-bold ${matchColor(job.matchScore)}`}>{job.matchScore}</span>
                 )}
               </div>
-            )}
-          </div>
-        )}
 
-        {/* 展开操作栏 */}
-        {isExpanded && (
-          <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-zinc-800 pt-2">
-            {onNavigateToDecode && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onNavigateToDecode(job);
-                }}
-                className="rounded border border-cyan-500/30 bg-cyan-500/10 px-2 py-1 text-[11px] text-cyan-200 transition hover:bg-cyan-500/20"
-              >
-                🔓 去解码
-              </button>
-            )}
-            {onNavigateToResearch && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onNavigateToResearch(job);
-                }}
-                className="rounded border border-purple-500/30 bg-purple-500/10 px-2 py-1 text-[11px] text-purple-200 transition hover:bg-purple-500/20"
-              >
-                🏢 公司研究
-              </button>
-            )}
-            {job.url && (
-              <a
-                href={job.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={(e) => e.stopPropagation()}
-                className="rounded border border-violet-500/30 bg-violet-500/10 px-2 py-1 text-[11px] text-violet-200 transition hover:bg-violet-500/20"
-              >
-                📤 去投递
-              </a>
-            )}
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                if (window.confirm(`确认将「${job.title}」标记为放弃？`)) {
-                  onAbandon(job.id);
-                }
-              }}
-              className="ml-auto rounded border border-red-500/20 px-2 py-1 text-[11px] text-red-300 transition hover:bg-red-500/10"
-            >
-              💤 放弃
-            </button>
-          </div>
-        )}
+              {/* 次要信息 */}
+              <div className="mt-2 flex flex-wrap items-center gap-2.5 text-xs leading-relaxed text-zinc-500">
+                {job.salaryRange && <span>💰 {job.salaryRange}</span>}
+                {job.location && <span>📍 {job.location}</span>}
+                {job.platform && <span>📡 {job.platform}</span>}
+              </div>
+
+              {/* 展开详情 */}
+              {isExpanded && (
+                <div className="mt-3 space-y-2.5 border-t border-zinc-800 pt-3 text-sm leading-relaxed">
+                  {job.jdSummary && <p className="text-zinc-400 leading-relaxed">📋 {job.jdSummary}</p>}
+                  {job.matchReasons && (
+                    <div className="rounded-lg bg-emerald-500/5 p-2.5">
+                      <span className="text-sm font-bold text-emerald-400">✅ 优点</span>
+                      <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-emerald-300/80">{job.matchReasons}</p>
+                    </div>
+                  )}
+                  {job.mismatchReasons && (
+                    <div className="rounded-lg bg-amber-500/5 p-2.5">
+                      <span className="text-sm font-bold text-amber-400">⚠️ 缺点</span>
+                      <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-amber-300/80">{job.mismatchReasons}</p>
+                    </div>
+                  )}
+                  {job.notes && <p className="text-zinc-500 leading-relaxed">📝 {job.notes}</p>}
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {onNavigateToDecode && (
+                      <button type="button" onClick={(e) => { e.stopPropagation(); onNavigateToDecode(job); }} className="rounded-md border border-cyan-500/30 bg-cyan-500/10 px-2 py-1 text-[10px] text-cyan-200 transition hover:bg-cyan-500/20">🔓 解码</button>
+                    )}
+                    {onNavigateToResearch && (
+                      <button type="button" onClick={(e) => { e.stopPropagation(); onNavigateToResearch(job); }} className="rounded-md border border-blue-500/30 bg-blue-500/10 px-2 py-1 text-[10px] text-blue-200 transition hover:bg-blue-500/20">🔬 研究</button>
+                    )}
+                    <button type="button" onClick={(e) => { e.stopPropagation(); onAbandon(job.id); }} className="rounded-md border border-zinc-700/30 bg-zinc-800/50 px-2 py-1 text-[10px] text-zinc-400 transition hover:bg-zinc-700/50">💤 放弃</button>
+                    <button type="button" onClick={(e) => { e.stopPropagation(); onDelete(job.id); }} className="rounded-md border border-red-500/20 bg-red-500/10 px-2 py-1 text-[10px] text-red-300 transition hover:bg-red-500/20">🗑️ 删除</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
