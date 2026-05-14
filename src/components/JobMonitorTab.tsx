@@ -265,6 +265,7 @@ export function JobMonitorTab({ onNavigateToDecode, onNavigateToResearch }: JobM
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
   const [useMock, setUseMock] = useState(false);
   const [activePlatform, setActivePlatform] = useState("全部");
+  const [activeCompany, setActiveCompany] = useState("全部");
   const [visibleColumns, setVisibleColumns] = useState<Set<number>>(new Set([0, 1, 2]));
   const kanbanRef = useRef<HTMLDivElement>(null);
   const autoScrollRef = useRef<number | null>(null);
@@ -300,17 +301,30 @@ export function JobMonitorTab({ onNavigateToDecode, onNavigateToResearch }: JobM
   }, [loadJobs]);
 
   // ==========================================
-  // 平台筛选逻辑
+  // 平台 & 公司 筛选逻辑
   // ==========================================
   const platformList = useMemo(() => {
     const platforms = Array.from(new Set(jobs.map((j) => j.platform).filter(Boolean)));
     return ["全部", ...platforms.sort()];
   }, [jobs]);
 
-  const filteredJobs = useMemo(() => {
-    if (activePlatform === "全部") return jobs;
-    return jobs.filter((j) => j.platform === activePlatform);
+  const companyList = useMemo(() => {
+    // 根据当前选中的平台动态过滤公司列表
+    const source = activePlatform === "全部" ? jobs : jobs.filter((j) => j.platform === activePlatform);
+    const companies = Array.from(new Set(source.map((j) => j.company).filter(Boolean)));
+    return ["全部", ...companies.sort()];
   }, [jobs, activePlatform]);
+
+  const filteredJobs = useMemo(() => {
+    let result = jobs;
+    if (activePlatform !== "全部") {
+      result = result.filter((j) => j.platform === activePlatform);
+    }
+    if (activeCompany !== "全部") {
+      result = result.filter((j) => j.company === activeCompany);
+    }
+    return result;
+  }, [jobs, activePlatform, activeCompany]);
 
   const stats = useMemo(() => {
     const now = new Date();
@@ -494,7 +508,10 @@ export function JobMonitorTab({ onNavigateToDecode, onNavigateToResearch }: JobM
             <button
               key={platform}
               type="button"
-              onClick={() => setActivePlatform(platform)}
+              onClick={() => {
+                setActivePlatform(platform);
+                setActiveCompany("全部");
+              }}
               className={`rounded-lg border px-2.5 py-1 text-[11px] font-medium transition-all ${
                 activePlatform === platform
                   ? "border-cyan-500/60 text-cyan-300 shadow-[0_0_6px_rgba(34,211,238,0.15)]"
@@ -502,6 +519,26 @@ export function JobMonitorTab({ onNavigateToDecode, onNavigateToResearch }: JobM
               }`}
             >
               {platform}
+            </button>
+          ))}
+        </div>
+      </section>
+      {/* 公司筛选 Tab */}
+      <section className="neon-card rounded-xl px-3 py-2">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="mr-1 text-[10px] font-medium text-zinc-500">🏢 公司</span>
+          {companyList.map((company) => (
+            <button
+              key={company}
+              type="button"
+              onClick={() => setActiveCompany(company)}
+              className={`rounded-lg border px-2.5 py-1 text-[11px] font-medium transition-all ${
+                activeCompany === company
+                  ? "border-cyan-500/60 text-cyan-300 shadow-[0_0_6px_rgba(34,211,238,0.15)]"
+                  : "border-zinc-700/50 text-zinc-500 hover:border-zinc-600 hover:text-zinc-300"
+              }`}
+            >
+              {company}
             </button>
           ))}
         </div>
