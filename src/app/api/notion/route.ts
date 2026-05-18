@@ -35,6 +35,7 @@ import {
   addJob,
   updateJobStatus,
   deleteJob,
+  getDeepResearchReport,
 } from "@/lib/notion";
 import { getModel } from "@/lib/llm";
 
@@ -937,8 +938,17 @@ export async function GET(req: Request) {
       return NextResponse.json({ jobs });
     }
 
+    if (resource === "job-research-report") {
+      const company = url.searchParams.get("company")?.trim();
+      if (!company) {
+        return NextResponse.json({ error: "Missing company parameter." }, { status: 400 });
+      }
+      const report = await getDeepResearchReport(company);
+      return NextResponse.json({ report });
+    }
+
     return NextResponse.json(
-      { error: "Unsupported resource. Use resource=knowledge, resource=stories, resource=progress, resource=jd, resource=resume, resource=hype-records, resource=hype-record-content, resource=mock-reports, resource=resume-base, resource=resume-bases, resource=profile-optimization, resource=profile-history, resource=coaching-session, or resource=jobs." },
+      { error: "Unsupported resource. Use resource=knowledge, resource=stories, resource=progress, resource=jd, resource=resume, resource=hype-records, resource=hype-record-content, resource=mock-reports, resource=resume-base, resource=resume-bases, resource=profile-optimization, resource=profile-history, resource=coaching-session, resource=jobs, or resource=job-research-report." },
       { status: 400 },
     );
   } catch (error) {

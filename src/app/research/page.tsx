@@ -7,6 +7,7 @@ import { PageGuide } from "@/components/PageGuide";
 import { toastFetch } from "@/lib/toast-utils";
 import type { ModelType } from "@/lib/llm";
 import { readModelSelection, writeModelSelection } from "@/lib/model-selection";
+import ReactMarkdown from "react-markdown";
 
 type ResearchResult = {
   snapshot: string[];
@@ -93,6 +94,25 @@ export default function ResearchPage() {
   const [loading, setLoading] = useState(false);
   const [savingToNotion, setSavingToNotion] = useState(false);
   const [status, setStatus] = useState("等待公司研究分析");
+  const [deepReport, setDeepReport] = useState<string | null>(null);
+  const [deepReportLoading, setDeepReportLoading] = useState(false);
+
+  const loadDeepReport = async (companyName: string) => {
+    setDeepReportLoading(true);
+    try {
+      const res = await fetch(`/api/notion?resource=job-research-report&company=${encodeURIComponent(companyName)}`);
+      if (!res.ok) {
+        setDeepReport(null);
+        return;
+      }
+      const data = (await res.json()) as { report?: string | null };
+      setDeepReport(data.report ?? null);
+    } catch {
+      setDeepReport(null);
+    } finally {
+      setDeepReportLoading(false);
+    }
+  };
 
   const onAnalyze = async () => {
     if (!company.trim()) {
@@ -120,6 +140,9 @@ export default function ResearchPage() {
         JSON.stringify({ company, depth, result: payload.result, savedAt: new Date().toISOString() }),
       );
       setStatus("公司研究完成，已保存到本地。");
+
+      // 同时加载深度背调报告
+      loadDeepReport(company);
     } catch {
       setStatus("分析失败，请稍后重试。");
     } finally {
@@ -131,6 +154,7 @@ export default function ResearchPage() {
     setCompany("");
     setDepth("standard");
     setResult(null);
+    setDeepReport(null);
     setStatus("已清空公司研究草稿。");
     if (typeof window !== "undefined") {
       window.localStorage.removeItem(RESEARCH_DRAFT_KEY);
@@ -147,8 +171,8 @@ export default function ResearchPage() {
         pageKey="research"
         items={[
           "先用快速扫描（quick）跑一遍，再用深度研究（deep）输出面试准备假设。",
-          "研究结果可在面试备战页面作为“研究摘要”继续使用。",
-          "重点关注“面试风格预判”，提前匹配你的表达风格。",
+          "研究结果可在面试备战页面作为「研究摘要」继续使用。",
+          "重点关注「面试风格预判」，提前匹配你的表达风格
         ]}
       />
       <section className="grid gap-4 xl:grid-cols-[1fr_1.2fr]">
@@ -284,7 +308,61 @@ export default function ResearchPage() {
           </div>
         </div>
       </section>
+
+      {/* 📡 OpenClaw 深度情报卡片 */}
+      <section className="neon-card rounded-2xl p-5">
+        <div className="mb-3 flex items-center gap-2">
+          <span className="text-lg">📡</span>
+          <h2 className="text-lg font-semibold text-zinc-100">OpenClaw 深度情报</h2>
+          {deepReportLoading && <span className="loading-dots text-sm text-cyan-400">加载中</span>}
+        </div>
+        {!result && !deepReport && !deepReportLoading && (
+          <p className="text-sm text-zinc-500">输入公司名称并点击"开始研究"，将自动从 Notion JobMonitor 数据库加载深度背调报告。</p>
+        )}
+        {deepReportLoading && (
+          <div className="animate-pulse space-y-2">
+            <div className="h-4 w-3/4 rounded bg-zinc-800" />
+            <div className="h-4 w-1/2 rounded bg-zinc-800" />
+            <div className="h-4 w-5/6 rounded bg-zinc-800" />
+          </div>
+        )}
+        {!deepReportLoading && deepReport === null && result && (
+          <p className="text-sm text-zinc-500">未在 Notion JobMonitor 数据库中找到该公司的深度背调报告。</p>
+        )}
+        {deepReport && (
+          <div className="prose prose-invert prose-sm max-w-none text-zinc-300">
+            <ReactMarkdown
+              components={{
+                h1: ({ children }) => <h1 className="mb-3 mt-5 text-xl font-bold text-zinc-100">{children}</h1>,
+                h2: ({ children }) => <h2 className="mb-2 mt-4 text-lg font-semibold text-zinc-100">{children}</h2>,
+                h3: ({ children }) => <h3 className="mb-2 mt-3 text-base font-medium text-zinc-200">{children}</h3>,
+                p: ({ children }) => <p className="mb-2 leading-relaxed text-zinc-300">{children}</p>,
+                ul: ({ children }) => <ul className="mb-3 list-disc space-y-1 pl-5">{children}</ul>,
+                ol: ({ children }) => <ol className="mb-3 list-decimal space-y-1 pl-5">{children}</ol>,
+                li: ({ children }) => <li className="text-zinc-300">{children}</li>,
+                blockquote: ({ children }) => (
+                  <blockquote className="my-2 border-l-2 border-cyan-500/50 pl-4 italic text-zinc-400">{children}</blockquote>
+                ),
+                code: ({ children }) => (
+                  <code className="rounded bg-zinc-800 px-1.5 py-0.5 text-sm text-cyan-300">{children}</code>
+                ),
+                pre: ({ children }) => (
+                  <pre className="my-3 overflow-x-auto rounded-lg bg-zinc-900 p-4 text-sm text-zinc-200">{children}</pre>
+                ),
+                hr: () => <hr className="my-4 border-zinc-700" />,
+                a: ({ href, children }) => (
+                  <a href={href} target="_blank" rel="noopener noreferrer" className="text-cyan-400 underline hover:text-cyan-300">
+                    {children}
+                  </a>
+                ),
+                strong: ({ children }) => <strong className="font-semibold text-zinc-100">{children}</strong>,
+              }}
+            >
+              {deepReport}
+            </ReactMarkdown>
+          </div>
+        )}
+      </section>
     </main>
   );
 }
-

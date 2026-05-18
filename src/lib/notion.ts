@@ -2215,3 +2215,164 @@ export async function deleteJob(pageId: string) {
     archived: true,
   });
 }
+
+// ==========================================
+// 6. 深度背调报告 (Deep Research Report) 操作
+// ==========================================
+
+/**
+ * 根据公司名在 JobMonitor 数据库中检索包含 "🤖 InterviewOS 深度背调报告" 锚点的页面。
+ * 返回匹配的 pageId 列表。
+ */
+export async function getJobPagesByCompany(company: string) {
+  ensureJobsDbId();
+  const response = await notion.databases.query({
+    database_id: dbs.jobs,
+    filter: {
+      property: "Company",
+      rich_text: { contains: company },
+    },
+  });
+  return response.results;
+}
+
+/**
+ * 将 Notion Block 递归转换为 Markdown 字符串。
+ * 支持 heading_1/2/3, paragraph, bulleted_list_item, numbered_list_item, quote, code, toggle, divider, callout。
+ */
+function blockToMarkdown(block: Record<string, unknown>, indent = ""): string {
+  const type = typeof block.type === "string" ? block.type : "";
+  const blockValue = block[type] as Record<string, unknown> | undefined;
+  if (!blockValue) return "";
+
+  const richText = Array.isArray(blockValue.rich_text) ? blockValue.rich_text : [];
+  const text = richText
+    .map((item: unknown) => {
+      const t = item as { plain_text?: string; text?: { content?: string }; annotations?: { bold?: boolean; italic?: boolean; code?: boolean; strikethrough?: boolean } } | undefined;
+      if (!t) return "";
+      let content = t.plain_text ?? t.text?.content ?? "";
+      const ann = t.annotations;
+      if (ann) {
+        if (ann.bold) content = `**${content}**`;
+        if (ann.italic) content = `*${content}*`;
+        if (ann.code) content = `\`${content}\``;
+        if (ann.strikethrough) content = `~~${content}~~`;
+      }
+      return content;
+    })
+    .join("");
+
+  switch (type) {
+    case "heading_1":
+      return `# ${text}\n\n`;
+    case "heading_2":
+      return `## ${text}\n\n`;
+    case "heading_3":
+      return `### ${text}\n\n`;
+    case "paragraph":
+      return `${text}\n\n`;
+    case "bulleted_list_item":
+      return `${indent}- ${text}\n`;
+    case "numbered_list_item":
+      return `${indent}1. ${text}\n`;
+    case "to_do":
+      const checked = blockValue.checked === true;
+      return `${indent}- [${checked ? "x" : " "}] ${text}\n`;
+    case "quote":
+      return `> ${text}\n\n`;
+    case "code":
+      const lang = typeof blockValue.language === "string" ? blockValue.language : "";
+      return `\`\`\`${lang}\n${text}\n\`\`\`\n\n`;
+    case "toggle":
+      // 递归渲染 toggle 内的 children
+      const toggleChildren = Array.isArray(blockValue.children) ? blockValue.children : [];
+      let toggleMd = `<details>\n<summary>${text}</summary>\n\n`;
+      for (const child of toggleChildren) {
+        toggleMd += blockToMarkdown(child as Record<string, unknown>, indent + "  ");
+      }
+      toggleMd += `</details>\n\n`;
+      return toggleMd;
+    case "divider":
+      return `---\n\n`;
+    case "callout":
+      const emoji = typeof blockValue.icon === "object" && blockValue.icon && "emoji" in (blockValue.icon as Record<string, unknown>)
+        ? ((blockValue.icon as Record<string, unknown>).emoji as string) ?? ""
+        : "";
+      return `> ${emoji} ${text}\n\n`;
+    case "image":
+      const imgUrl = typeof blockValue.external === "object" && blockValue.external
+        ? ((blockValue.external as Record<string, unknown>).url as string) ?? ""
+        : "";
+      return imgUrl ? `![${text}](${imgUrl})\n\n` : "";
+    default:
+      return text ? `${text}\n\n` : "";
+  }
+}
+
+/**
+ * 获取指定 page 的所有 blocks 并转换为 Markdown 字符串。
+ * 支持分页获取所有 blocks。
+ */
+export async function getPageBlocksAsMarkdown(pageId: string): Promise<string> {
+  const mdParts: string[] = [];
+  let cursor: string | undefined = undefined;
+
+  do {
+    const response = await notion.blocks.children.list({
+      block_id: pageId,
+      start_cursor: cursor,
+      page_size: 100,
+    });
+
+    for (const block of response.results) {
+      const b = block as Record<string, unknown>;
+      const md = blockToMarkdown(b);
+      if (md.trim()) {
+        mdParts.push(md);
+      }
+
+      // 如果 block 有 children（如 toggle、column_list），递归获取
+      const hasChildren = b.has_children === true;
+      if (hasChildren) {
+        const childMd = await getPageBlocksAsMarkdown(typeof b.id === "string" ? b.id : "");
+        if (childMd.trim()) {
+          mdParts.push(childMd);
+        }
+      }
+    }
+
+    cursor = response.has_more ? response.next_cursor ?? undefined : undefined;
+  } while (cursor);
+
+  return mdParts.join("").trim();
+}
+
+/**
+ * 根据公司名在 JobMonitor 数据库中检索包含 "🤖 InterviewOS 深度背调报告" 锚点的页面，
+ * 并提取该锚点下方的所有子 blocks 内容，转换为 Markdown 字符串返回。
+ */
+export async function getDeepResearchReport(company: string): Promise<string | null> {
+  const pages = await getJobPagesByCompany(company);
+  if (pages.length === 0) return null;
+
+  const ANCHOR = "🤖 InterviewOS 深度背调报告";
+
+  for (const page of pages) {
+    const pageId = typeof page.id === "string" ? page.id : "";
+    if (!pageId) continue;
+
+    const fullMd = await getPageBlocksAsMarkdown(pageId);
+
+    // 查找锚点位置
+    const anchorIndex = fullMd.indexOf(ANCHOR);
+    if (anchorIndex === -1) continue;
+
+    // 提取锚点之后的所有内容
+    const reportContent = fullMd.slice(anchorIndex + ANCHOR.length).trim();
+    if (reportContent) {
+      return `## ${ANCHOR}\n\n${reportContent}`;
+    }
+  }
+
+  return null;
+}
