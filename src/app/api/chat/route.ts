@@ -127,7 +127,7 @@ export async function POST(req: Request) {
       if (modelType === "resume") return getFeatureFallbackOrder("resume");
       if (modelType === "mock") return getFeatureFallbackOrder("mock");
       if (modelType === "practice") return getFeatureFallbackOrder("practice");
-      if (modelType === "pro" || modelType === "deep") {
+      if (modelType === "pro") {
         return ["pro", "fast"];
       }
       return [modelType];

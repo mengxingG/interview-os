@@ -146,7 +146,7 @@ export async function POST(req: Request) {
     let resolvedModel: ModelType = modelType;
     const preflightOrder = isFeatureModel(modelType)
       ? getFeatureFallbackOrder("mock")
-      : modelType === "pro" || modelType === "deep"
+      : modelType === "pro"
         ? (["pro", "fast"] as ModelType[])
         : [modelType];
     for (const candidate of preflightOrder) {

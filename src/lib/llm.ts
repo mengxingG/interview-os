@@ -24,7 +24,6 @@ const claude = createAnthropic({
 export type ModelType =
   | "fast"
   | "deepseek-pro"
-  | "deep"
   | "pro"
   | "vision"
   | "resume"
@@ -51,7 +50,7 @@ export function getModel(type: ModelType = "fast") {
   if (type === "practice") {
     return deepseek.chat(process.env.DEEPSEEK_PRO_MODEL || "deepseek-v4-pro");
   }
-  if (type === "deep" || type === "pro") {
+  if (type === "pro") {
     return gemini(process.env.GEMINI_PRO_MODEL || "gemini-2.5-pro");
   }
   if (type === "vision") {
@@ -73,7 +72,7 @@ export function getFeatureFallbackOrder(feature: "resume" | "mock" | "practice")
 /** 根据请求的 modelType 解析 fallback 链（含功能专用档位） */
 export function getModelFallbackOrder(requested: ModelType): ModelType[] {
   if (isFeatureModel(requested)) return getFeatureFallbackOrder(requested);
-  if (requested === "pro" || requested === "deep") return ["pro", "fast"];
+  if (requested === "pro") return ["pro", "fast"];
   if (requested === "deepseek-pro") return ["deepseek-pro", "fast"];
   return [requested];
 }

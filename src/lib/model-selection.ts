@@ -9,11 +9,12 @@ export function readModelSelection(storageKey: string, fallback: ModelType): Mod
   if (typeof window === "undefined") return fallback;
   try {
     const raw = window.localStorage.getItem(`${MODEL_STORAGE_PREFIX}${storageKey}`);
+    // 兼容旧版 localStorage 中的 "deep" 档位
     const normalized = raw === "deep" ? "pro" : raw;
     if (VALID_MODELS.includes(normalized as ModelType)) return normalized as ModelType;
-    return fallback === "deep" ? "pro" : fallback;
+    return fallback;
   } catch {
-    return fallback === "deep" ? "pro" : fallback;
+    return fallback;
   }
 }
 
