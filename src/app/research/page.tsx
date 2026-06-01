@@ -118,7 +118,7 @@ export default function ResearchPage() {
       return;
     }
     setLoading(true);
-    setStatus("正在使用 Gemini Pro 生成公司研究...");
+    setStatus("正在使用 Gemini 3.5 Flash 生成公司研究...");
     try {
       const response = await fetch("/api/research/analyze", {
         method: "POST",

@@ -505,7 +505,7 @@ export default function LinkedinPage() {
       return;
     }
     setLoading(true);
-    setStatus(modelType === "pro" ? "正在使用 Gemini Pro 深度优化（约 10-30 秒）..." : "正在优化求职档案...");
+    setStatus(modelType === "pro" ? "正在使用 Gemini 3.5 Flash 深度优化（约 10-30 秒）..." : "正在优化求职档案...");
     try {
       const response = await fetch("/api/linkedin/optimize", {
         method: "POST",

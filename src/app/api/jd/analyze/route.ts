@@ -10,7 +10,7 @@ import { getModel } from "@/lib/llm";
  * POST /api/jd/analyze
  *
  * 分析岗位描述（JD），仅支持文本输入。
- * 使用 Gemini Pro 进行结构化分析。
+ * 使用 Gemini 3.5 Flash 进行结构化分析。
  */
 export async function POST(req: Request) {
   try {

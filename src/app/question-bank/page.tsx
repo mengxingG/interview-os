@@ -495,7 +495,7 @@ export default function QuestionBankPage() {
       practiceModelType === "mock"
         ? "正在使用 Claude Sonnet 4.6 评分并写回..."
         : practiceModelType === "pro"
-          ? "正在评分并写回（Gemini Pro，通常 10-30 秒）"
+          ? "正在评分并写回（Gemini 3.5 Flash，通常 10-30 秒）"
           : "正在评分并写回",
     );
     try {

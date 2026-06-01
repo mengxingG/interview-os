@@ -366,7 +366,7 @@ export default function DecodePage({ jdRecordPicker }: { jdRecordPicker?: ReactN
       return;
     }
     setLoading(true);
-    setStatus(modelType === "pro" ? "正在使用 Gemini Pro 深度解码（约 10-30 秒）..." : "正在解码...");
+    setStatus(modelType === "pro" ? "正在使用 Gemini 3.5 Flash 深度解码（约 10-30 秒）..." : "正在解码...");
     try {
       const response = await fetch("/api/decode/analyze", {
         method: "POST",
@@ -415,7 +415,7 @@ export default function DecodePage({ jdRecordPicker }: { jdRecordPicker?: ReactN
       return;
     }
     setPlanning(true);
-    setStatus(modelType === "pro" ? "正在使用 Gemini Pro 生成计划（约 10-30 秒）..." : "正在生成 7 天 prep 清单...");
+    setStatus(modelType === "pro" ? "正在使用 Gemini 3.5 Flash 生成计划（约 10-30 秒）..." : "正在生成 7 天 prep 清单...");
     try {
       const response = await fetch("/api/decode/plan", {
         method: "POST",

@@ -51,7 +51,7 @@ export function getModel(type: ModelType = "fast") {
     return deepseek.chat(process.env.DEEPSEEK_PRO_MODEL || "deepseek-v4-pro");
   }
   if (type === "pro") {
-    return gemini(process.env.GEMINI_PRO_MODEL || "gemini-2.5-pro");
+    return gemini(process.env.GEMINI_PRO_MODEL || "gemini-3.5-flash");
   }
   if (type === "vision") {
     return gemini(process.env.GEMINI_VISION_MODEL || "gemini-1.5-flash");

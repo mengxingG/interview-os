@@ -274,7 +274,7 @@ export default function PositioningPage() {
       return;
     }
     setLoading(true);
-    setStatus(modelType === "pro" ? "正在使用 Gemini Pro 深度分析（约 10-30 秒）..." : "正在生成求职定位分析...");
+    setStatus(modelType === "pro" ? "正在使用 Gemini 3.5 Flash 深度分析（约 10-30 秒）..." : "正在生成求职定位分析...");
     try {
       const response = await fetch("/api/positioning/analyze", {
         method: "POST",

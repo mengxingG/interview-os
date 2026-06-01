@@ -73,7 +73,7 @@ export default function ChatPanel({
   hideInitialUserBubble = false,
   immersiveLayout = false,
   maxWidthClassName = "max-w-3xl",
-  proLoadingHint = "当前为专业模型（Gemini Pro），响应通常需要 10-30 秒，请耐心等待。",
+  proLoadingHint = "当前为 Gemini 3.5 Flash，响应通常需要 10-30 秒，请耐心等待。",
   modelStorageKey,
   inputTopContent,
   enableVoiceInput = true,

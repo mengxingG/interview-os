@@ -133,7 +133,7 @@ export default function HypePage() {
       return;
     }
     setLoading(true);
-    setStatus(modelType === "pro" ? "正在使用 Gemini Pro 深度生成（约 10-30 秒）..." : "正在生成提振包...");
+    setStatus(modelType === "pro" ? "正在使用 Gemini 3.5 Flash 深度生成（约 10-30 秒）..." : "正在生成提振包...");
     try {
       const response = await fetch("/api/hype/generate", {
         method: "POST",

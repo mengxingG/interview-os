@@ -13,7 +13,7 @@ export const ALL_MODEL_OPTIONS: ModelOption[] = [
   { value: "practice", label: "DeepSeek V4-Pro", provider: "DeepSeek" },
   { value: "fast", label: "DeepSeek V4 Flash", provider: "DeepSeek" },
   { value: "deepseek-pro", label: "DeepSeek V4 Pro", provider: "DeepSeek" },
-  { value: "pro", label: "Gemini Pro", provider: "Google" },
+  { value: "pro", label: "Gemini 3.5 Flash", provider: "Google" },
 ];
 
 export const SELECTABLE_MODEL_TYPES = ALL_MODEL_OPTIONS.map((item) => item.value);
