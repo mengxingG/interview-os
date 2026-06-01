@@ -1,5 +1,5 @@
 import { generateText } from "ai";
-import { getModel, type ModelType } from "@/lib/llm";
+import { getFeatureFallbackOrder, getModel, getModelFallbackOrder, isFeatureModel, type ModelType } from "@/lib/llm";
 import { buildUserContextForPrompt } from "@/lib/user-profile";
 
 function parseJsonArray(raw: string) {
@@ -22,9 +22,10 @@ export async function POST(req: Request) {
       return Response.json({ error: "role is required" }, { status: 400 });
     }
     const count = body.count === 5 || body.count === 10 || body.count === 15 ? body.count : 10;
-    const requested = body.modelType ?? "deep";
-    const fallbackOrder: ModelType[] =
-      requested === "pro" ? ["pro", "deep", "fast"] : requested === "deep" ? ["deep", "fast"] : ["fast"];
+    const requested = body.modelType ?? "practice";
+    const fallbackOrder: ModelType[] = isFeatureModel(requested)
+      ? getFeatureFallbackOrder("practice")
+      : getModelFallbackOrder(requested);
     const categoryList = Array.isArray(body.categories) ? body.categories.filter(Boolean) : [];
     const categoryHint =
       categoryList.length > 0

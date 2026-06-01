@@ -1,5 +1,5 @@
 import { generateText } from "ai";
-import { getModel, type ModelType } from "@/lib/llm";
+import { getModel, getModelFallbackOrder, type ModelType } from "@/lib/llm";
 import { storySeeds, buildUserContextForPrompt } from "@/lib/user-profile";
 import { composeReferenceBackedPrompt } from "@/lib/prompts/references/compose";
 
@@ -45,7 +45,7 @@ function normalizeSelfIntroScript(raw: string) {
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as RequestBody;
-    const requestedModel = body.modelType ?? "pro";
+    const requestedModel = body.modelType ?? "practice";
     const system = composeReferenceBackedPrompt("prep", `You are an interview prep strategist. Merge prep + concerns + questions workflows. Return JSON only:
 {
   "interviewFormatGuide": string[],
@@ -129,8 +129,7 @@ Custom intro-generation instruction:
 {在这里直接输出定制的 3 分钟正文，不准留空！}
 你必须生成【完整且真实的自我介绍正文】，绝对不能只输出结构模板或占位符；严禁输出“{}”“[]”“此处”“待补充”等占位文本。每个版本至少输出 4 句完整自然语言。
 `.trim();
-    const fallbackOrder: ModelType[] =
-      requestedModel === "pro" ? ["pro", "deep", "fast"] : requestedModel === "deep" ? ["deep", "fast"] : ["fast"];
+    const fallbackOrder = getModelFallbackOrder(requestedModel);
     let text = "";
     for (const type of fallbackOrder) {
       try {

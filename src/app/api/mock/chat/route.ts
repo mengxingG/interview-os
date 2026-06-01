@@ -1,6 +1,6 @@
 import { generateText, streamText } from "ai";
-import { ANTI_HALLUCINATION, GLOBAL_PERSONA } from "@/config/prompts";
-import { getModel, type ModelType } from "@/lib/llm";
+import { ANTI_HALLUCINATION, GLOBAL_PERSONA, withClaudeRoleLock } from "@/config/prompts";
+import { getFeatureFallbackOrder, getModel, isFeatureModel, type ModelType } from "@/lib/llm";
 
 type ModelMessage = { role: "user" | "assistant" | "system"; content: string };
 type MockStage = "product_sense" | "technical" | "execution" | "behavioral";
@@ -66,7 +66,7 @@ function buildPersonaInstruction(currentStage: MockStage) {
 
 function buildMockSystemPrompt(format: string, currentStage: MockStage, fullLoop: boolean) {
   const nextStage = getNextStage(currentStage);
-  return `
+  return withClaudeRoleLock(`
 ${GLOBAL_PERSONA}
 ${ANTI_HALLUCINATION}
 
@@ -111,14 +111,14 @@ Phase 4: 候选人反问与结束 (约 1-2 回合)
 [STAGE_COMPLETE] {"currentStage":"${currentStage}","nextStage":"${nextStage ?? ""}","notice":"☕️ 当前轮次已结束，准备进入下一轮。"}
 
 11) ${fullLoop ? "当前是 Full Loop 连面，请严格控制每阶段回合并在阶段结束时再转场。" : "当前是 Quick Mock，只允许在最终结束时输出 [INTERVIEW_OVER]。"}
-`.trim();
+`.trim());
 }
 
 export async function POST(req: Request) {
   try {
     const {
       messages,
-      modelType = "deep",
+      modelType = "mock",
       mockFormat = "行为初筛（Behavioral Screen）",
       resumeContext = "",
       prepOrJdContext = "",
@@ -144,15 +144,22 @@ export async function POST(req: Request) {
 
     // preflight fallback happens before streaming to avoid duplicate/partial bubbles.
     let resolvedModel: ModelType = modelType;
-    if (modelType === "pro" || modelType === "deep") {
+    const preflightOrder = isFeatureModel(modelType)
+      ? getFeatureFallbackOrder("mock")
+      : modelType === "pro" || modelType === "deep"
+        ? (["pro", "fast"] as ModelType[])
+        : [modelType];
+    for (const candidate of preflightOrder) {
       try {
         await withTimeout(
-          generateText({ model: getModel(modelType), prompt: "health check", maxOutputTokens: 4 }),
+          generateText({ model: getModel(candidate), prompt: "health check", maxOutputTokens: 4 }),
           8000,
           "Model preflight timeout",
         );
+        resolvedModel = candidate;
+        break;
       } catch {
-        resolvedModel = modelType === "pro" ? "deep" : "fast";
+        resolvedModel = preflightOrder[preflightOrder.length - 1] ?? "fast";
       }
     }
 

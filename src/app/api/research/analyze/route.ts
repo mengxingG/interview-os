@@ -1,5 +1,5 @@
 import { generateText } from "ai";
-import { getModel, type ModelType } from "@/lib/llm";
+import { getModel, getModelFallbackOrder, type ModelType } from "@/lib/llm";
 import { buildUserContextForPrompt } from "@/lib/user-profile";
 import { composeReferenceBackedPrompt } from "@/lib/prompts/references/compose";
 
@@ -41,8 +41,7 @@ Output requirements:
 - Add source-tier awareness (verified vs general vs unknown).
 - If confidence is limited, say so in fitAssessment.
 `.trim();
-    const fallbackOrder: ModelType[] =
-      requestedModel === "pro" ? ["pro", "deep", "fast"] : requestedModel === "deep" ? ["deep", "fast"] : ["fast"];
+    const fallbackOrder = getModelFallbackOrder(requestedModel);
     let text = "";
     for (const type of fallbackOrder) {
       try {

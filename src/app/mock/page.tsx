@@ -675,7 +675,9 @@ ${selectedJdContextText || "(none)"}
           </section>
           <ChatPanel
             systemPrompt={mockSystem}
-            modelType="deep"
+            modelType="mock"
+            recommendedModel="mock"
+            modelStorageKey="mock-interview"
             apiEndpoint="/api/mock/chat"
             requestBody={{
               mockFormat: resolvedMockFormatText,
@@ -805,7 +807,9 @@ ${selectedJdContextText || "(none)"}
           </section>
           <ChatPanel
             systemPrompt={practiceSystem}
-            modelType="fast"
+            modelType="practice"
+            recommendedModel="practice"
+            modelStorageKey="mock-practice"
             assistantName="训练教练"
             initialAssistantMessage={`你当前在 Stage ${practiceStage}（${PRACTICE_STAGES.find((s) => s.id === practiceStage)?.label ?? "训练"}）。我会给你一个面试问题，你的回答需要在问题偏离你准备的内容时重新定向。准备好了输入“开始”。`}
             emptyStateText="训练模式：先让 AI 出题，再在下方提交自评与教练评分。"

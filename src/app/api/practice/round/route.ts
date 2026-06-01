@@ -1,5 +1,6 @@
 import { generateText } from "ai";
-import { getModel } from "@/lib/llm";
+import { withClaudeRoleLock } from "@/config/prompts";
+import { getFeatureFallbackOrder, getModel } from "@/lib/llm";
 import { buildUserContextForPrompt } from "@/lib/user-profile";
 import { composeReferenceBackedPrompt } from "@/lib/prompts/references/compose";
 
@@ -20,7 +21,7 @@ function parseJson(raw: string) {
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as RequestBody;
-    const system = composeReferenceBackedPrompt("practice", `You are an interview coach for practice rounds. Return JSON only:
+    const system = withClaudeRoleLock(composeReferenceBackedPrompt("practice", `You are an interview coach for practice rounds. Return JSON only:
 {
   "coachScores": {
     "Substance": number,
@@ -34,7 +35,7 @@ export async function POST(req: Request) {
   "nextRoundAdjustment": string,
   "recommendedSelfScore": number,
   "calibrationLabel": "over" | "under" | "accurate"
-}`.trim());
+}`.trim()));
     const prompt = `
 ${buildUserContextForPrompt()}
 
@@ -44,12 +45,16 @@ Candidate answer:
 ${body.answer}
 Candidate self-score(1-5): ${body.selfScore}
 `.trim();
-    let text: string;
-    try {
-      text = (await generateText({ model: getModel("deep"), system, prompt })).text;
-    } catch {
-      text = (await generateText({ model: getModel("fast"), system, prompt })).text;
+    let text = "";
+    for (const modelType of getFeatureFallbackOrder("mock")) {
+      try {
+        text = (await generateText({ model: getModel(modelType), system, prompt })).text;
+        break;
+      } catch {
+        // fallback
+      }
     }
+    if (!text) throw new Error("All practice model channels failed");
     return Response.json({ result: parseJson(text) });
   } catch (error) {
     return Response.json(

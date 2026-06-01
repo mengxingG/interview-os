@@ -1,5 +1,6 @@
 import { generateText } from "ai";
-import { getModel, type ModelType } from "@/lib/llm";
+import { withClaudeRoleLock } from "@/config/prompts";
+import { getModel, getModelFallbackOrder, type ModelType } from "@/lib/llm";
 import { buildDebriefSystemPrompt } from "@/lib/prompts/debrief";
 import { buildUserContextForPrompt } from "@/lib/user-profile";
 
@@ -35,7 +36,7 @@ function parseJson(raw: string) {
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as RequestBody;
-    const requestedModel = body.modelType ?? "pro";
+    const requestedModel = body.modelType ?? "mock";
     if (!body.transcript?.trim()) {
       return Response.json({ error: "Missing transcript." }, { status: 400 });
     }
@@ -47,7 +48,7 @@ export async function POST(req: Request) {
         .map((line) => line.match(/^([A-Za-z\u4e00-\u9fa5 ]+):/)?.[1]?.trim())
         .filter(Boolean),
     ).size;
-    const system = `${buildDebriefSystemPrompt({
+    const system = withClaudeRoleLock(`${buildDebriefSystemPrompt({
       targetRole: "AI Product Manager",
       emphasis: ["transcript normalization", "q&a scoring", "triage path", "inner monologue"],
     })}
@@ -57,11 +58,9 @@ Additionally include:
   "formatDetection": { "source": string, "confidence": "High" | "Medium" | "Low", "speakerCount": number },
   "triageDecision": string
 }
-Return JSON only.`;
-    const fallbackOrder: ModelType[] =
-      requestedModel === "pro" ? ["pro", "deep", "fast"] : requestedModel === "deep" ? ["deep", "fast"] : ["fast"];
+Return JSON only.`);
     let text = "";
-    for (const type of fallbackOrder) {
+    for (const type of getModelFallbackOrder(requestedModel)) {
       try {
         text = (
           await generateText({

@@ -1,5 +1,7 @@
 import { generateText } from "ai";
-import { getModel } from "@/lib/llm";
+import { appendQwenConciseInstruction, QWEN_MAX_OUTPUT_TOKENS } from "@/config/prompts";
+import { getModel, getModelFallbackOrder, type ModelType } from "@/lib/llm";
+import { generateTextWithQwenFallback } from "@/lib/qwen-fallback";
 import { buildResumeSystemPrompt } from "@/lib/prompts/resume";
 
 export const maxDuration = 60;
@@ -18,6 +20,7 @@ export async function POST(req: Request) {
       targetJD?: string;
       beforeText?: string;
       targetCompany?: string;
+      modelType?: ModelType;
     };
     if (!body.targetJD?.trim() || !body.beforeText?.trim()) {
       return Response.json({ error: "targetJD and beforeText are required." }, { status: 400 });
@@ -52,18 +55,26 @@ ${body.beforeText}
 - 保留真实经历
 - 优先提升与 JD 的匹配度、关键词命中、表达简洁度`.trim();
 
-    console.log("🚀 开始调用大模型优化简历...");
-    const fallbackOrder: Array<"deep" | "fast"> = ["deep", "fast"];
+    const qwenPrompt = appendQwenConciseInstruction(prompt);
+    const requestedModel = body.modelType ?? "resume";
+    const fallbackOrder = getModelFallbackOrder(requestedModel);
     let text = "";
     let lastError: unknown = null;
     for (const modelType of fallbackOrder) {
       try {
         console.log(`🤖 尝试模型通道: ${modelType}`);
-        const modelResult = await generateText({
-          model: getModel(modelType),
-          system,
-          prompt,
-        });
+        const modelResult =
+          modelType === "resume"
+            ? await generateTextWithQwenFallback({
+                system,
+                prompt: qwenPrompt,
+                maxOutputTokens: QWEN_MAX_OUTPUT_TOKENS,
+              })
+            : await generateText({
+                model: getModel(modelType),
+                system,
+                prompt,
+              });
         text = modelResult.text;
         console.log(`✅ 模型通道成功: ${modelType}`);
         break;

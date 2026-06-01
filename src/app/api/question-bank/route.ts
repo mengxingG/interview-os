@@ -1,6 +1,6 @@
 import { generateText } from "ai";
 import { Client } from "@notionhq/client";
-import { getModel, type ModelType } from "@/lib/llm";
+import { getFeatureFallbackOrder, getModel, getModelFallbackOrder, isFeatureModel, type ModelType } from "@/lib/llm";
 import { buildUserContextForPrompt } from "@/lib/user-profile";
 import type { NotionRelationRef, QuestionBankNotionRow } from "@/types/notion";
 
@@ -382,7 +382,10 @@ Target company: ${body.company}
 Candidate profile:
 ${buildUserContextForPrompt()}
 `.trim();
-      const order: ModelType[] = body.modelType === "pro" ? ["pro", "deep", "fast"] : body.modelType === "deep" ? ["deep", "fast"] : ["fast"];
+      const requested = body.modelType ?? "practice";
+      const order: ModelType[] = isFeatureModel(requested)
+        ? getFeatureFallbackOrder("practice")
+        : getModelFallbackOrder(requested);
       let text = "";
       for (const t of order) {
         try {

@@ -1,5 +1,6 @@
 import { generateText } from "ai";
-import { getModel } from "@/lib/llm";
+import { withClaudeRoleLock } from "@/config/prompts";
+import { getFeatureFallbackOrder, getModel } from "@/lib/llm";
 import { buildEvaluateSystemPrompt } from "@/lib/prompts/evaluate";
 import { buildUserContextForPrompt } from "@/lib/user-profile";
 
@@ -25,7 +26,7 @@ export async function POST(req: Request) {
       return Response.json({ error: "Missing transcript." }, { status: 400 });
     }
 
-    const systemPrompt = `${buildEvaluateSystemPrompt({
+    const systemPrompt = withClaudeRoleLock(`${buildEvaluateSystemPrompt({
       targetRole: body.targetRole ?? "AI Product Manager",
       rubricHint: "focus on measurable impact, ownership clarity, and decision quality",
     })}
@@ -38,25 +39,23 @@ Return additional fields:
   "signalReading": string[],
   "energyTrajectory": string,
   "hireSignal": "Strong Hire" | "Hire" | "Mixed" | "No Hire"
-}`;
+}`);
 
-    let text: string;
-    try {
-      const deepResult = await generateText({
-        model: getModel("deep"),
-        system: systemPrompt,
-        prompt: `Interview transcript:\n${transcript}`,
-      });
-      text = deepResult.text;
-    } catch {
-      // Fallback to fast model when deep model/network is unavailable.
-      const fastResult = await generateText({
-        model: getModel("fast"),
-        system: systemPrompt,
-        prompt: `Interview transcript:\n${transcript}`,
-      });
-      text = fastResult.text;
+    let text = "";
+    for (const modelType of getFeatureFallbackOrder("mock")) {
+      try {
+        const result = await generateText({
+          model: getModel(modelType),
+          system: systemPrompt,
+          prompt: `Interview transcript:\n${transcript}`,
+        });
+        text = result.text;
+        break;
+      } catch {
+        // fallback
+      }
     }
+    if (!text) throw new Error("All mock evaluation model channels failed");
 
     const parsed = extractJsonObject(text);
     return Response.json({ result: parsed });

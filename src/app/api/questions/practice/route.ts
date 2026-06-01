@@ -1,5 +1,6 @@
 import { generateText } from "ai";
-import { getModel, type ModelType } from "@/lib/llm";
+import { withClaudeRoleLock } from "@/config/prompts";
+import { getModel, getModelFallbackOrder, type ModelType } from "@/lib/llm";
 import { getStories } from "@/lib/notion";
 import { buildUserContextForPrompt } from "@/lib/user-profile";
 
@@ -100,10 +101,9 @@ export async function POST(req: Request) {
     if (!body.question?.trim() || !body.answer?.trim()) {
       return Response.json({ error: "question and answer are required." }, { status: 400 });
     }
-    const requested = body.modelType ?? "deep";
-    const fallbackOrder: ModelType[] =
-      requested === "pro" ? ["pro", "deep", "fast"] : requested === "deep" ? ["deep", "fast"] : ["fast"];
-    const system = `You are an interview evaluator.
+    const requested = body.modelType ?? "mock";
+    const fallbackOrder = getModelFallbackOrder(requested);
+    const system = withClaudeRoleLock(`You are an interview evaluator.
 Return JSON only:
 {
   "scores": { "Substance": number, "Structure": number, "Relevance": number, "Credibility": number, "Differentiation": number },
@@ -111,7 +111,7 @@ Return JSON only:
   "gaps": string[],
   "improvements": string[],
   "coachMarkdown": string
-}`.trim();
+}`.trim());
     const prompt = `${buildUserContextForPrompt()}
 
 Question:

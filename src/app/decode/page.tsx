@@ -4,6 +4,7 @@ import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { LoadingHint } from "@/components/LoadingHint";
 import { PageGuide } from "@/components/PageGuide";
+import { ModelSelect } from "@/components/ModelSelect";
 import { UpcomingInterviewFocus } from "@/components/UpcomingInterviewFocus";
 import { getUpcomingInterview, readInterviewSchedule } from "@/lib/interview-schedule";
 import type { ModelType } from "@/lib/llm";
@@ -246,7 +247,7 @@ export default function DecodePage({ jdRecordPicker }: { jdRecordPicker?: ReactN
     keyRequirements: string[];
     savedAt: string;
   } | null>(null);
-  const [modelType, setModelType] = useState<ModelType>(() => readModelSelection("decode", "deep"));
+  const [modelType, setModelType] = useState<ModelType>(() => readModelSelection("decode", "pro"));
   useEffect(() => {
     writeModelSelection("decode", modelType);
   }, [modelType]);
@@ -686,18 +687,15 @@ export default function DecodePage({ jdRecordPicker }: { jdRecordPicker?: ReactN
             className="h-[520px] w-full rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-3 text-sm text-zinc-200"
           />
           <div className="mt-2 flex w-full items-end gap-2">
-            <div className="w-[170px] shrink-0">
-              <p className="mb-1 text-xs text-zinc-500">模型</p>
-              <select
+            <div className="w-[220px] shrink-0">
+              <ModelSelect
                 value={modelType}
-                onChange={(event) => setModelType(event.target.value as ModelType)}
-                className="w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm"
-              >
-                <option value="fast">⚡ DeepSeek V4 Flash</option>
-                <option value="deepseek-pro">🔬 DeepSeek V4 Pro</option>
-                <option value="deep">🧠 Gemini Flash（深度）</option>
-                <option value="pro">🔮 Gemini Pro（专业）</option>
-              </select>
+                onChange={setModelType}
+                storageKey="decode"
+                recommended="pro"
+                label="大模型"
+                selectClassName="w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm"
+              />
             </div>
             {jdRecordPicker ? <div className="min-w-0 flex-1">{jdRecordPicker}</div> : null}
           </div>

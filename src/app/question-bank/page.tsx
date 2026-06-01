@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { LoadingHint } from "@/components/LoadingHint";
 import { PageGuide } from "@/components/PageGuide";
+import { ModelSelect } from "@/components/ModelSelect";
 import { UpcomingInterviewFocus } from "@/components/UpcomingInterviewFocus";
 import VoiceInputButton from "@/components/VoiceInputButton";
 import { readModelSelection, writeModelSelection } from "@/lib/model-selection";
@@ -111,7 +112,7 @@ export default function QuestionBankPage() {
   const [showBatchModal, setShowBatchModal] = useState(false);
   const [showImportPreview, setShowImportPreview] = useState(false);
   const [importPreviewRows, setImportPreviewRows] = useState<QuestionBankRow[]>([]);
-  const [modelType, setModelType] = useState<ModelType>(() => readModelSelection("question-bank", "deep"));
+  const [modelType, setModelType] = useState<ModelType>(() => readModelSelection("question-bank", "practice"));
   const [selectedQuestion, setSelectedQuestion] = useState<QuestionBankRow | null>(null);
   const [practiceAnswer, setPracticeAnswer] = useState("");
   const [practiceFeedback, setPracticeFeedback] = useState("");
@@ -122,7 +123,7 @@ export default function QuestionBankPage() {
   const [lastPracticeResultStatus, setLastPracticeResultStatus] = useState<QuestionStatus | null>(null);
   const [knowledgeExtractStatus, setKnowledgeExtractStatus] = useState("");
   const [practiceModelType, setPracticeModelType] = useState<ModelType>(() =>
-    readModelSelection("question-bank-practice", "deep"),
+    readModelSelection("question-bank-practice", "mock"),
   );
   const [moduleOpen, setModuleOpen] = useState(true);
   const [selfScore, setSelfScore] = useState(3);
@@ -491,9 +492,11 @@ export default function QuestionBankPage() {
     }
     setIsPracticeSubmitting(true);
     setPracticeStatus(
-      practiceModelType === "pro"
-        ? "正在评分并写回（Gemini Pro，通常 10-30 秒）"
-        : "正在评分并写回",
+      practiceModelType === "mock"
+        ? "正在使用 Claude Sonnet 4.6 评分并写回..."
+        : practiceModelType === "pro"
+          ? "正在评分并写回（Gemini Pro，通常 10-30 秒）"
+          : "正在评分并写回",
     );
     try {
       const evalRes = await fetch("/api/questions/practice", {
@@ -914,16 +917,14 @@ export default function QuestionBankPage() {
           </div>
 
           <div className="mt-3">
-            <select
+            <ModelSelect
               value={practiceModelType}
-              onChange={(event) => setPracticeModelType(event.target.value as ModelType)}
-              className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200"
-            >
-              <option value="fast">练习评分模型：⚡ DeepSeek V4 Flash</option>
-              <option value="deepseek-pro">练习评分模型：🔬 DeepSeek V4 Pro</option>
-              <option value="deep">练习评分模型：🧠 Gemini Flash（深度）</option>
-              <option value="pro">练习评分模型：🔮 Gemini Pro（专业）</option>
-            </select>
+              onChange={setPracticeModelType}
+              storageKey="question-bank-practice"
+              recommended="mock"
+              label="练习评分大模型"
+              selectClassName="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200"
+            />
           </div>
           <LoadingHint active={isPracticeSubmitting} text={practiceStatus} className="mt-2" />
 
@@ -1200,17 +1201,14 @@ export default function QuestionBankPage() {
                 </select>
               </div>
               <div>
-                <p className="mb-1 text-xs text-zinc-400">模型</p>
-                <select
+                <ModelSelect
                   value={modelType}
-                  onChange={(event) => setModelType(event.target.value as ModelType)}
-                  className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200"
-                >
-              <option value="fast">⚡ DeepSeek V4 Flash</option>
-              <option value="deepseek-pro">🔬 DeepSeek V4 Pro</option>
-              <option value="deep">🧠 Gemini Flash（深度）</option>
-              <option value="pro">🔮 Gemini Pro（专业）</option>
-                </select>
+                  onChange={setModelType}
+                  storageKey="question-bank"
+                  recommended="practice"
+                  label="批量生成大模型"
+                  selectClassName="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200"
+                />
               </div>
               <button
                 type="button"

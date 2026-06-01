@@ -5,6 +5,7 @@ import { DefaultChatTransport } from "ai";
 import { Send } from "lucide-react";
 import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
+import { ALL_MODEL_OPTIONS, formatModelOptionLabel, getModelLabel } from "@/lib/model-options";
 import type { ModelType } from "@/lib/llm";
 import { readModelSelection, writeModelSelection } from "@/lib/model-selection";
 import VoiceInputButton from "@/components/VoiceInputButton";
@@ -19,6 +20,8 @@ export type ChatMessageView = {
 type ChatPanelProps = {
   systemPrompt: string;
   modelType?: ModelType;
+  /** 下拉框中标记推荐的模型档位 */
+  recommendedModel?: ModelType;
   emptyStateText?: string;
   inputPlaceholder?: string;
   initialAssistantMessage?: string;
@@ -57,6 +60,7 @@ type ChatPanelProps = {
 export default function ChatPanel({
   systemPrompt,
   modelType = "fast",
+  recommendedModel,
   emptyStateText = "InterviewOS 初始化完成，发送第一条消息开始模拟面试...",
   inputPlaceholder = "输入消息，或使用教练指令...",
   initialAssistantMessage,
@@ -87,6 +91,7 @@ export default function ChatPanel({
   onStageComplete,
 }: ChatPanelProps) {
   const syncModelRef = useRef(false);
+  const resolvedRecommended = recommendedModel ?? modelType;
   const resolvedStorageKey = useMemo(() => {
     if (modelStorageKey) return modelStorageKey;
     if (typeof window === "undefined") return "";
@@ -106,16 +111,30 @@ export default function ChatPanel({
     if (!resolvedStorageKey) return;
     writeModelSelection(resolvedStorageKey, selectedModel);
   }, [resolvedStorageKey, selectedModel]);
+
+  const selectedModelRef = useRef(selectedModel);
+  const systemPromptRef = useRef(systemPrompt);
+  const requestBodyRef = useRef(requestBody);
+  selectedModelRef.current = selectedModel;
+  systemPromptRef.current = systemPrompt;
+  requestBodyRef.current = requestBody;
+
+  const transport = useMemo(
+    () =>
+      new DefaultChatTransport({
+        api: apiEndpoint,
+        body: () => ({
+          systemPrompt: systemPromptRef.current,
+          modelType: selectedModelRef.current,
+          ...(requestBodyRef.current ?? {}),
+        }),
+      }),
+    [apiEndpoint],
+  );
+
   // useChat 自动对接 /api/chat，并处理流式输出拼接
   const { messages, sendMessage, status, stop } = useChat({
-    transport: new DefaultChatTransport({
-      api: apiEndpoint,
-      body: {
-        systemPrompt,
-        modelType: selectedModel,
-        ...(requestBody ?? {}),
-      },
-    }),
+    transport,
   });
   const [input, setInput] = useState("");
   const [voiceState, setVoiceState] = useState<VoiceState>("idle");
@@ -448,7 +467,7 @@ export default function ChatPanel({
       setShowTimeoutHint(true);
       setShowTimeoutDialog(true);
       const nextModel: ModelType | null =
-        selectedModel === "pro" ? "deep" : selectedModel === "deep" ? "fast" : null;
+        selectedModel === "pro" ? "fast" : null;
       if (!nextModel) return;
     }, 35000);
     return () => {
@@ -552,6 +571,10 @@ export default function ChatPanel({
       {inputTopContent ? (
         <div className="border-t border-zinc-800 bg-zinc-950/40 p-3">{inputTopContent}</div>
       ) : null}
+      <div className="border-t border-zinc-800/80 bg-zinc-950/50 px-3 py-1.5 text-xs text-zinc-500">
+        当前大模型：<span className="font-medium text-cyan-300">{getModelLabel(selectedModel)}</span>
+        <span className="text-zinc-600"> · 切换后下一条消息生效</span>
+      </div>
       {/* 输入区域 */}
       <form onSubmit={onSubmit} className="border-t border-zinc-800/80 bg-zinc-900/95 p-3">
         <div className={`flex items-end gap-2 rounded-xl border bg-zinc-950/70 p-2 transition-all ${
@@ -565,12 +588,14 @@ export default function ChatPanel({
             value={selectedModel}
             onChange={(event) => setSelectedModel(event.target.value as ModelType)}
             disabled={isLoading}
-            className="h-10 rounded-md border border-zinc-800 bg-zinc-950 px-2 text-xs text-zinc-300"
+            title={`下一条消息将使用 ${getModelLabel(selectedModel)}`}
+            className="h-10 max-w-[220px] rounded-md border border-zinc-800 bg-zinc-950 px-2 text-xs text-zinc-300"
           >
-            <option value="fast">⚡ DeepSeek V4 Flash</option>
-            <option value="deepseek-pro">🔬 DeepSeek V4 Pro</option>
-            <option value="deep">🧠 Gemini Flash</option>
-            <option value="pro">🔮 Gemini Pro</option>
+            {ALL_MODEL_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {formatModelOptionLabel(option, resolvedRecommended)}
+              </option>
+            ))}
           </select>
           <textarea
             value={input}
@@ -674,7 +699,7 @@ export default function ChatPanel({
                 type="button"
                 onClick={() => {
                   const nextModel: ModelType | null =
-                    selectedModel === "pro" ? "deep" : selectedModel === "deep" ? "fast" : null;
+                    selectedModel === "pro" ? "fast" : null;
                   if (!nextModel || !lastSentText) {
                     setShowTimeoutDialog(false);
                     return;
@@ -692,7 +717,7 @@ export default function ChatPanel({
                   stop();
                   setSelectedModel(nextModel);
                   setAutoFallbackNote(
-                    `已切换到 ${nextModel === "deep" ? "Gemini Flash（深度）" : "DeepSeek（快速）"}，并重试上一条请求。`,
+                    `已切换到 DeepSeek（快速），并重试上一条请求。`,
                   );
                   setShowTimeoutDialog(false);
                   setShowTimeoutHint(false);

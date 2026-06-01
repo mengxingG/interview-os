@@ -66,6 +66,8 @@ export function DashboardCoachAssistant() {
     <ChatPanel
       systemPrompt={navSystemPrompt}
       modelType="fast"
+      recommendedModel="fast"
+      modelStorageKey="dashboard-coach"
       assistantName="AI 教练助手"
       inputPlaceholder="问我：下一步该做什么？/ 帮我分析薄弱环节 / 怎么准备 XX 公司面试"
       initialAssistantMessage={greeting}

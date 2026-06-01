@@ -5,6 +5,7 @@ import ReactMarkdown from "react-markdown";
 import ChatPanel from "@/components/ChatPanel";
 import type { ChatMessageView } from "@/components/ChatPanel";
 import { PageGuide } from "@/components/PageGuide";
+import { withClaudeRoleLock } from "@/config/prompts";
 import { toastFetch } from "@/lib/toast-utils";
 import { buildStoryOptimizationPrompt } from "@/lib/prompts/stories";
 import { parseDecodeResultSections } from "@/lib/jd-decode-format";
@@ -678,7 +679,7 @@ function buildStressSystemPrompt(persona: StressPersona, story: Story) {
       : persona === "execution"
         ? "你是严苛 Data Science Lead。只问指标口径、因果验证、实验设计、排查路径。"
         : "你是跨部门负责人。只问冲突管理、资源博弈、失败复盘、艰难取舍。";
-  return `
+  return withClaudeRoleLock(`
 你是“故事深度拷问官”，目标是围绕同一条故事进行高压面试追问，不要给建议，不要给总结。
 ${personaInstruction}
 
@@ -692,7 +693,7 @@ ${personaInstruction}
 
 当前故事（只读上下文）：
 ${buildStressStorySummary(story)}
-`.trim();
+`.trim());
 }
 
 function extractQAPairs(messages: ChatMessageView[]) {
@@ -2438,7 +2439,9 @@ export default function StoriesPage() {
               <ChatPanel
                 key={`${stressStory.id}-${stressPersona}`}
                 systemPrompt={stressPrompt}
-                modelType="deep"
+                modelType="mock"
+                recommendedModel="mock"
+                modelStorageKey="story-stress"
                 programmaticUserMessage={stressKickoffPrompt}
                 programmaticMessageNonce={stressKickoffNonce}
                 hideProgrammaticUserBubble
@@ -2791,7 +2794,9 @@ export default function StoriesPage() {
             <ChatPanel
               key={optimizeStory.id}
               systemPrompt={optimizePrompt}
-              modelType="deep"
+              modelType="pro"
+              recommendedModel="pro"
+              modelStorageKey="story-optimize"
               initialUserMessage={optimizeSession?.messages?.length ? undefined : optimizeMessage}
               programmaticUserMessage={quickActionPrompt}
               programmaticMessageNonce={quickActionNonce}

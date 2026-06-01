@@ -1,5 +1,5 @@
 import { generateText } from "ai";
-import { getModel, type ModelType } from "@/lib/llm";
+import { getModel, getModelFallbackOrder, type ModelType } from "@/lib/llm";
 import { buildUserContextForPrompt } from "@/lib/user-profile";
 import { getStories } from "@/lib/notion";
 import { composeReferenceBackedPrompt } from "@/lib/prompts/references/compose";
@@ -70,7 +70,7 @@ function normalizeHypeResult(input: unknown) {
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as RequestBody;
-    const requestedModel = body.modelType ?? "deep";
+    const requestedModel = body.modelType ?? "pro";
     const storiesRaw = await getStories();
     const stories = storiesRaw
       .map((item) => {
@@ -121,7 +121,7 @@ ${stories.map((s, idx) => `- S${String(idx + 1).padStart(3, "0")}: ${s.title}; s
 `.trim();
 
     const fallbackOrder: ModelType[] =
-      requestedModel === "pro" ? ["pro", "deep", "fast"] : requestedModel === "deep" ? ["deep", "fast"] : ["fast"];
+      getModelFallbackOrder(requestedModel);
     let text = "";
     for (const type of fallbackOrder) {
       try {

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { nextSm2 } from "@/lib/sm2";
 import type { ModelType } from "@/lib/llm";
+import { ModelSelect } from "@/components/ModelSelect";
 import { readModelSelection, writeModelSelection } from "@/lib/model-selection";
 import { toastFetch } from "@/lib/toast-utils";
 
@@ -65,7 +66,7 @@ export function TrainPanel() {
   const [generationMode, setGenerationMode] = useState<"aipm" | "question-bank" | "jd" | "review-plan">("aipm");
   const [generationCount, setGenerationCount] = useState<15 | 20>(20);
   const [generationModel, setGenerationModel] = useState<ModelType>(() =>
-    readModelSelection("knowledge-generate", "deep"),
+    readModelSelection("knowledge-generate", "practice"),
   );
   const [generationLoading, setGenerationLoading] = useState(false);
   const [generatedItems, setGeneratedItems] = useState<GeneratedKnowledgeItem[]>([]);
@@ -73,7 +74,7 @@ export function TrainPanel() {
   const [batchSaving, setBatchSaving] = useState(false);
   const [generatingInterviewQuestion, setGeneratingInterviewQuestion] = useState(false);
   const [quickQuestionModel, setQuickQuestionModel] = useState<ModelType>(() =>
-    readModelSelection("train-generate-question", "deep"),
+    readModelSelection("train-generate-question", "practice"),
   );
   const [toast, setToast] = useState<{ text: string; href?: string; linkText?: string } | null>(null);
 
@@ -482,17 +483,16 @@ export function TrainPanel() {
               )}
             </div>
             {flipped ? (
-              <div className="mt-3 flex items-center gap-2">
-                <select
+              <div className="mt-3 flex flex-wrap items-end gap-2">
+                <ModelSelect
                   value={quickQuestionModel}
-                  onChange={(event) => setQuickQuestionModel(event.target.value as ModelType)}
-                  className="rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-zinc-200"
-                >
-                  <option value="fast">⚡ DeepSeek V4 Flash</option>
-                  <option value="deepseek-pro">🔬 DeepSeek V4 Pro</option>
-                  <option value="deep">🧠 Gemini Flash</option>
-                  <option value="pro">🔮 Gemini Pro</option>
-                </select>
+                  onChange={setQuickQuestionModel}
+                  storageKey="train-generate-question"
+                  recommended="practice"
+                  label="出题大模型"
+                  selectClassName="rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-zinc-200"
+                  className="min-w-[200px]"
+                />
                 <button
                   type="button"
                   onClick={() => {
@@ -626,17 +626,14 @@ export function TrainPanel() {
                   </select>
                 </div>
                 <div>
-                  <p className="text-xs text-zinc-500">模型选择</p>
-                  <select
+                  <ModelSelect
                     value={generationModel}
-                    onChange={(event) => setGenerationModel(event.target.value as ModelType)}
-                    className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200"
-                  >
-                    <option value="fast">⚡ DeepSeek V4 Flash</option>
-                    <option value="deepseek-pro">🔬 DeepSeek V4 Pro</option>
-                    <option value="deep">🧠 Gemini Flash（深度）</option>
-                    <option value="pro">🔮 Gemini Pro（专业）</option>
-                  </select>
+                    onChange={setGenerationModel}
+                    storageKey="knowledge-generate"
+                    recommended="practice"
+                    label="大模型"
+                    selectClassName="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200"
+                  />
                   {generationModel === "pro" ? (
                     <p className="mt-1 text-xs text-zinc-500">Pro 可能较慢（约 10-30 秒），适合更“成体系”的知识点。</p>
                   ) : null}

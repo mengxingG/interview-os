@@ -4,6 +4,7 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { LoadingHint } from "@/components/LoadingHint";
 import { PageGuide } from "@/components/PageGuide";
+import { ModelSelect } from "@/components/ModelSelect";
 import { UpcomingInterviewFocus } from "@/components/UpcomingInterviewFocus";
 import { toastFetch } from "@/lib/toast-utils";
 import { getUpcomingInterview, readInterviewSchedule } from "@/lib/interview-schedule";
@@ -97,10 +98,7 @@ export default function PrepPage() {
   const [loadingResumeBases, setLoadingResumeBases] = useState(false);
   const [result, setResult] = useState<PrepResult | null>(initialState.result);
   const [activeResultTab, setActiveResultTab] = useState<PrepResultTab>("strategy");
-  const [modelType, setModelType] = useState<ModelType>("pro");
-  useEffect(() => {
-    writeModelSelection("prep", modelType);
-  }, [modelType]);
+  const [modelType, setModelType] = useState<ModelType>(() => readModelSelection("prep", "practice"));
   useEffect(() => {
     if (typeof window === "undefined") return;
     window.localStorage.setItem(
@@ -184,7 +182,7 @@ export default function PrepPage() {
     } catch {
       // Ignore corrupted local storage data.
     } finally {
-      setModelType(readModelSelection("prep", "pro"));
+      setModelType(readModelSelection("prep", "practice"));
       setHydrated(true);
     }
   }, []);
@@ -274,7 +272,7 @@ export default function PrepPage() {
     setLoadingStepIndex(2);
     setStatus("正在整理公司研究与面试官线索...");
     setLoadingStepIndex(3);
-    setStatus(modelType === "pro" ? "正在使用 Gemini Pro 预测问题并生成简报（约 10-30 秒）..." : "正在预测问题并生成备战简报...");
+    setStatus("正在使用 DeepSeek V4-Pro 生成备战简报...");
     const response = await fetch("/api/prep/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -678,17 +676,14 @@ export default function PrepPage() {
               placeholder="岗位名称（如 AI 产品经理 / AI Product Manager）"
               className="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm"
             />
-            <p className="text-xs text-zinc-500">模型</p>
-            <select
+            <ModelSelect
               value={modelType}
-              onChange={(event) => setModelType(event.target.value as ModelType)}
-              className="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm"
-            >
-              <option value="fast">⚡ DeepSeek V4 Flash</option>
-              <option value="deepseek-pro">🔬 DeepSeek V4 Pro</option>
-              <option value="deep">🧠 Gemini Flash（深度）</option>
-              <option value="pro">🔮 Gemini Pro（专业）</option>
-            </select>
+              onChange={setModelType}
+              storageKey="prep"
+              recommended="practice"
+              label="大模型"
+              selectClassName="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm"
+            />
             <p className="text-xs text-zinc-500">个人底本 / 故事上下文（可选但推荐）</p>
             <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
               <select

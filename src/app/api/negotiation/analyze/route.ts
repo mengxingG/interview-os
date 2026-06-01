@@ -1,5 +1,5 @@
 import { generateText } from "ai";
-import { getModel, type ModelType } from "@/lib/llm";
+import { getModel, getModelFallbackOrder, type ModelType } from "@/lib/llm";
 import { buildUserContextForPrompt } from "@/lib/user-profile";
 import { composeReferenceBackedPrompt } from "@/lib/prompts/references/compose";
 
@@ -24,7 +24,7 @@ function parseJson(raw: string) {
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as NegotiationRequest;
-    const requestedModel = body.modelType ?? "fast";
+    const requestedModel = body.modelType ?? "practice";
     const system = composeReferenceBackedPrompt("negotiation", `
 You are a compensation negotiation coach for tech jobs.
 Return JSON only:
@@ -51,10 +51,8 @@ Candidate baseline:
 ${buildUserContextForPrompt()}
 `.trim();
 
-    const fallbackOrder: ModelType[] =
-      requestedModel === "pro" ? ["pro", "deep", "fast"] : requestedModel === "deep" ? ["deep", "fast"] : ["fast"];
     let text = "";
-    for (const type of fallbackOrder) {
+    for (const type of getModelFallbackOrder(requestedModel)) {
       try {
         const modelResult = await generateText({ model: getModel(type), system, prompt });
         text = modelResult.text;

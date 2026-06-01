@@ -1,6 +1,6 @@
 import { generateText } from "ai";
 import { addQuestion } from "@/lib/notion";
-import { getModel, type ModelType } from "@/lib/llm";
+import { getFeatureFallbackOrder, getModel, getModelFallbackOrder, isFeatureModel, type ModelType } from "@/lib/llm";
 import { buildUserContextForPrompt } from "@/lib/user-profile";
 
 function parseJson(raw: string) {
@@ -22,9 +22,10 @@ export async function POST(req: Request) {
       return Response.json({ error: "knowledgePageId, title and content are required." }, { status: 400 });
     }
 
-    const requested = body.modelType ?? "deep";
-    const fallbackOrder: ModelType[] =
-      requested === "pro" ? ["pro", "deep", "fast"] : requested === "deep" ? ["deep", "fast"] : ["fast"];
+    const requested = body.modelType ?? "practice";
+    const fallbackOrder: ModelType[] = isFeatureModel(requested)
+      ? getFeatureFallbackOrder("practice")
+      : getModelFallbackOrder(requested);
 
     const system = `你是面试教练。基于知识点生成 1 道实战面试题，返回 JSON：
 {

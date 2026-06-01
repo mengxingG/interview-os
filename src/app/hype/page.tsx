@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { PageGuide } from "@/components/PageGuide";
+import { ModelSelect } from "@/components/ModelSelect";
 import type { ModelType } from "@/lib/llm";
 import { readModelSelection, writeModelSelection } from "@/lib/model-selection";
 
@@ -39,7 +40,7 @@ export default function HypePage() {
   const [selectedPrepContext, setSelectedPrepContext] = useState("");
   const [loadingRecords, setLoadingRecords] = useState(false);
   const [loadingContext, setLoadingContext] = useState(false);
-  const [modelType, setModelType] = useState<ModelType>(() => readModelSelection("hype", "deep"));
+  const [modelType, setModelType] = useState<ModelType>(() => readModelSelection("hype", "pro"));
   useEffect(() => {
     writeModelSelection("hype", modelType);
   }, [modelType]);
@@ -190,19 +191,15 @@ export default function HypePage() {
           </button>
           <span className="text-xs text-zinc-500">{status}</span>
         </div>
-        <div className="mb-2">
-          <p className="mb-1 text-xs text-zinc-500">模型</p>
-          <select
-            value={modelType}
-            onChange={(event) => setModelType(event.target.value as ModelType)}
-            className="w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm"
-          >
-            <option value="fast">⚡ DeepSeek V4 Flash</option>
-            <option value="deepseek-pro">🔬 DeepSeek V4 Pro</option>
-            <option value="deep">🧠 Gemini Flash（深度）</option>
-            <option value="pro">🔮 Gemini Pro（专业）</option>
-          </select>
-        </div>
+        <ModelSelect
+          value={modelType}
+          onChange={setModelType}
+          storageKey="hype"
+          recommended="pro"
+          label="大模型"
+          className="mb-2"
+          selectClassName="w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm"
+        />
         <div className="mb-3">
           <p className="mb-1 text-xs text-zinc-500">备战记录（自动默认选中最新一条）</p>
           <select

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { LoadingHint } from "@/components/LoadingHint";
 import { PageGuide } from "@/components/PageGuide";
+import { ModelSelect } from "@/components/ModelSelect";
 import { toastFetch } from "@/lib/toast-utils";
 import type { ModelType } from "@/lib/llm";
 import { readModelSelection, writeModelSelection } from "@/lib/model-selection";
@@ -78,9 +79,6 @@ export default function ResearchPage() {
   const [result, setResult] = useState<ResearchResult | null>(initialState.result);
   const [modelType, setModelType] = useState<ModelType>(() => readModelSelection("research", "pro"));
   useEffect(() => {
-    writeModelSelection("research", modelType);
-  }, [modelType]);
-  useEffect(() => {
     if (typeof window === "undefined") return;
     window.localStorage.setItem(
       RESEARCH_DRAFT_KEY,
@@ -120,7 +118,7 @@ export default function ResearchPage() {
       return;
     }
     setLoading(true);
-    setStatus(modelType === "pro" ? "正在使用 Gemini Pro 深度分析（约 10-30 秒）..." : "正在生成公司研究...");
+    setStatus("正在使用 Gemini Pro 生成公司研究...");
     try {
       const response = await fetch("/api/research/analyze", {
         method: "POST",
@@ -196,17 +194,14 @@ export default function ResearchPage() {
               <option value="standard">标准研究（Standard）</option>
               <option value="deep">深度研究</option>
             </select>
-            <p className="text-xs text-zinc-500">模型</p>
-            <select
+            <ModelSelect
               value={modelType}
-              onChange={(event) => setModelType(event.target.value as ModelType)}
-              className="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm"
-            >
-              <option value="fast">⚡ DeepSeek V4 Flash</option>
-              <option value="deepseek-pro">🔬 DeepSeek V4 Pro</option>
-              <option value="deep">🧠 Gemini Flash（深度）</option>
-              <option value="pro">🔮 Gemini Pro（专业）</option>
-            </select>
+              onChange={setModelType}
+              storageKey="research"
+              recommended="pro"
+              label="大模型"
+              selectClassName="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm"
+            />
           </div>
           <div className="mt-3 flex items-center gap-2">
             <button

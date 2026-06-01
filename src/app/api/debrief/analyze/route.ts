@@ -1,5 +1,5 @@
 import { generateText } from "ai";
-import { getModel, type ModelType } from "@/lib/llm";
+import { getModel, getModelFallbackOrder, type ModelType } from "@/lib/llm";
 import { buildDebriefSystemPrompt } from "@/lib/prompts/debrief";
 import { buildUserContextForPrompt } from "@/lib/user-profile";
 
@@ -33,9 +33,7 @@ async function normalizeTranscript(rawTranscript: string, requestedModel: ModelT
 4) 尽量保留原文中的技术名词和业务指标。
 `.trim();
 
-  const fallbackOrder: ModelType[] =
-    requestedModel === "pro" ? ["pro", "deep", "fast"] : requestedModel === "deep" ? ["deep", "fast"] : ["fast"];
-  for (const type of fallbackOrder) {
+  for (const type of getModelFallbackOrder(requestedModel)) {
     try {
       const result = await generateText({
         model: getModel(type),
@@ -65,7 +63,7 @@ function parseJson(raw: string) {
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as DebriefRequest;
-    const requestedModel = body.modelType ?? "pro";
+    const requestedModel = body.modelType ?? "practice";
     if (!body.company || !body.round || !body.interviewType || !body.transcript) {
       return Response.json({ error: "Missing required fields." }, { status: 400 });
     }
@@ -96,10 +94,8 @@ Raw Transcript (for detail cross-check):
 ${trimTo(body.transcript, 8000)}
 `.trim();
 
-    const fallbackOrder: ModelType[] =
-      requestedModel === "pro" ? ["pro", "deep", "fast"] : requestedModel === "deep" ? ["deep", "fast"] : ["fast"];
     let text = "";
-    for (const type of fallbackOrder) {
+    for (const type of getModelFallbackOrder(requestedModel)) {
       try {
         const result = await generateText({
           model: getModel(type),

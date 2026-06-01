@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import ChatPanel from "@/components/ChatPanel";
 import { PageGuide } from "@/components/PageGuide";
+import { ModelSelect } from "@/components/ModelSelect";
 import type { ModelType } from "@/lib/llm";
 import { readModelSelection, writeModelSelection } from "@/lib/model-selection";
 
@@ -47,7 +48,7 @@ export default function NegotiationPage() {
   });
   const [form, setForm] = useState(initialForm);
   const [result, setResult] = useState<NegotiationResult | null>(null);
-  const [modelType, setModelType] = useState<ModelType>(() => readModelSelection("negotiation", "fast"));
+  const [modelType, setModelType] = useState<ModelType>(() => readModelSelection("negotiation", "practice"));
   useEffect(() => {
     writeModelSelection("negotiation", modelType);
   }, [modelType]);
@@ -89,7 +90,7 @@ Output strict JSON only:
       return;
     }
     setLoading(true);
-    setStatus(modelType === "pro" ? "正在使用 Gemini Pro 深度分析（约 10-30 秒）..." : "正在生成谈判策略...");
+    setStatus("正在使用 DeepSeek V4-Pro 生成谈判策略...");
     try {
       const response = await fetch("/api/negotiation/analyze", {
         method: "POST",
@@ -197,17 +198,14 @@ Output strict JSON only:
               placeholder="地点"
               className="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm"
             />
-            <p className="text-xs text-zinc-500">模型</p>
-            <select
+            <ModelSelect
               value={modelType}
-              onChange={(event) => setModelType(event.target.value as ModelType)}
-              className="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm"
-            >
-              <option value="fast">⚡ DeepSeek V4 Flash</option>
-              <option value="deepseek-pro">🔬 DeepSeek V4 Pro</option>
-              <option value="deep">🧠 Gemini Flash（深度）</option>
-              <option value="pro">🔮 Gemini Pro（专业）</option>
-            </select>
+              onChange={setModelType}
+              storageKey="negotiation"
+              recommended="practice"
+              label="大模型"
+              selectClassName="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm"
+            />
           </div>
           <div className="mt-3 flex items-center gap-2">
             <button
@@ -287,7 +285,9 @@ Output strict JSON only:
         <p className="mb-3 text-xs text-amber-300">训练规则：当前模式强制语音回击。请点击麦克风录音作答。</p>
         <ChatPanel
           systemPrompt={negotiationPrompt}
-          modelType="deep"
+          modelType="mock"
+          recommendedModel="mock"
+          modelStorageKey="negotiation-chat"
           apiEndpoint="/api/mock/chat"
           requestBody={{ mockFormat: "Compensation Negotiation" }}
           assistantName="HR"

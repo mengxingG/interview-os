@@ -1,6 +1,6 @@
 import { generateText } from "ai";
 import { addKnowledgeCardsBatch } from "@/lib/notion";
-import { getModel, type ModelType } from "@/lib/llm";
+import { getModel, getModelFallbackOrder, type ModelType } from "@/lib/llm";
 import { buildUserContextForPrompt } from "@/lib/user-profile";
 
 function parseJsonArray(raw: string) {
@@ -25,9 +25,9 @@ export async function POST(req: Request) {
       return Response.json({ error: "questionPageId, question and answer are required." }, { status: 400 });
     }
 
-    const requested = body.modelType ?? "deep";
+    const requested = body.modelType ?? "pro";
     const fallbackOrder: ModelType[] =
-      requested === "pro" ? ["pro", "deep", "fast"] : requested === "deep" ? ["deep", "fast"] : ["fast"];
+      getModelFallbackOrder(requested);
 
     const system = `你是面试教练。根据“题目 + 候选人糟糕回答 + 反馈”，提取 1-2 个该候选人缺失的核心知识点。
 只返回 JSON 数组：

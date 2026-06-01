@@ -371,7 +371,7 @@ async function extractStructuredJDForStorage(input: {
       input.decodeSummary,
     ].join("\n");
     const { object } = await generateObject({
-      model: getModel("deep"),
+      model: getModel("pro"),
       schema: z.object({
         company: z.string().default("").describe("提取的公司名称，如果没有则为空字符串"),
         role: z.string().default("").describe("提取的岗位名称，如果没有则为空字符串"),

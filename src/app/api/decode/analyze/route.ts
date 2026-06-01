@@ -1,5 +1,5 @@
 import { generateText } from "ai";
-import { getModel, type ModelType } from "@/lib/llm";
+import { getModel, getModelFallbackOrder, type ModelType } from "@/lib/llm";
 import { buildDecodeSystemPrompt } from "@/lib/prompts/decode";
 import { buildUserContextForPrompt } from "@/lib/user-profile";
 
@@ -25,7 +25,7 @@ function extractPrepMarkdown(raw: string) {
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as DecodeRequest;
-    const requestedModel = body.modelType ?? "deep";
+    const requestedModel = body.modelType ?? "pro";
     const jdText = typeof body.jdText === "string" ? body.jdText.trim() : "";
     if (!jdText) {
       return Response.json({ error: "Missing JD text." }, { status: 400 });
@@ -36,8 +36,7 @@ export async function POST(req: Request) {
       candidateProfile: buildUserContextForPrompt(),
     });
 
-    const fallbackOrder: ModelType[] =
-      requestedModel === "pro" ? ["pro", "deep", "fast"] : requestedModel === "deep" ? ["deep", "fast"] : ["fast"];
+    const fallbackOrder = getModelFallbackOrder(requestedModel);
     let text = "";
     for (const type of fallbackOrder) {
       try {

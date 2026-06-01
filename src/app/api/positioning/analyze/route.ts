@@ -1,5 +1,5 @@
 import { generateText } from "ai";
-import { getModel, type ModelType } from "@/lib/llm";
+import { getModel, getModelFallbackOrder, type ModelType } from "@/lib/llm";
 import { buildUserContextForPrompt } from "@/lib/user-profile";
 import { composeReferenceBackedPrompt } from "@/lib/prompts/references/compose";
 
@@ -24,7 +24,7 @@ function parseJson(raw: string) {
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as PositioningRequest;
-    const requestedModel = body.modelType ?? "deep";
+    const requestedModel = body.modelType ?? "pro";
     const system = composeReferenceBackedPrompt("positioning", `
 你是一个顶级的求职定位专家。候选人正在进行跨领域/跨职能转型。你在分析「竞争优势」和「转型故事」时，绝对不能割裂其过往经历，必须深度挖掘其原有背景中的【可迁移能力（Transferable Skills）】，并论证这些能力为何是目标岗位（如 AI PM）极其稀缺的护城河。
 
@@ -52,7 +52,7 @@ ${buildUserContextForPrompt()}
 `.trim();
 
     const fallbackOrder: ModelType[] =
-      requestedModel === "pro" ? ["pro", "deep", "fast"] : requestedModel === "deep" ? ["deep", "fast"] : ["fast"];
+      getModelFallbackOrder(requestedModel);
     let text = "";
     for (const type of fallbackOrder) {
       try {

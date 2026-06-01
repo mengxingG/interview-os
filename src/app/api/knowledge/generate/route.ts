@@ -1,5 +1,5 @@
 import { generateText } from "ai";
-import { getModel, type ModelType } from "@/lib/llm";
+import { getFeatureFallbackOrder, getModel, getModelFallbackOrder, isFeatureModel, type ModelType } from "@/lib/llm";
 import { buildUserContextForPrompt } from "@/lib/user-profile";
 import { getAllKnowledgeCards, getJDRecords, getKnowledgeCardsToReview, getQuestions } from "@/lib/notion";
 
@@ -99,7 +99,10 @@ export async function POST(req: Request) {
     const body = (await req.json()) as RequestBody;
     const mode = body.mode ?? "aipm";
     const count = Math.min(Math.max(body.count ?? 15, 5), 20);
-    const requestedModel = body.modelType ?? "deep";
+    const requestedModel = body.modelType ?? "practice";
+    const fallbackOrder: ModelType[] = isFeatureModel(requestedModel)
+      ? getFeatureFallbackOrder("practice")
+      : getModelFallbackOrder(requestedModel);
     let sourceContext = "";
 
     if (mode === "question-bank") {
@@ -148,8 +151,6 @@ ${sourceContext || "无，按 AI PM 高频知识点生成"}
 `.trim();
 
     let items: GeneratedItem[] = [];
-    const fallbackOrder: ModelType[] =
-      requestedModel === "pro" ? ["pro", "deep", "fast"] : requestedModel === "deep" ? ["deep", "fast"] : ["fast"];
     for (const m of fallbackOrder) {
       try {
         const text = (await generateText({ model: getModel(m), system, prompt })).text;

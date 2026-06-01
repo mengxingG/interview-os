@@ -10,7 +10,7 @@ import { getModel } from "@/lib/llm";
  * POST /api/jd/analyze
  *
  * 分析岗位描述（JD），仅支持文本输入。
- * 使用高性价比模型（gemini-2.5-flash）进行结构化分析。
+ * 使用 Gemini Pro 进行结构化分析。
  */
 export async function POST(req: Request) {
   try {
@@ -54,7 +54,7 @@ ${jdText.slice(0, 8000)}
       console.log("[JD Analyze] 开始调用 LLM");
 
       const result = await generateObject({
-        model: getModel("deep"),
+        model: getModel("pro"),
         schema: z.object({
           title: z.string().default(""),
           company: z.string().default(""),

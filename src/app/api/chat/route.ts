@@ -1,5 +1,11 @@
 import { generateText, streamText } from "ai";
-import { getModel, type ModelType } from "@/lib/llm";
+import {
+  appendQwenConciseInstruction,
+  QWEN_MAX_OUTPUT_TOKENS,
+  withClaudeRoleLock,
+} from "@/config/prompts";
+import { getFeatureFallbackOrder, getModel, isFeatureModel, type ModelType } from "@/lib/llm";
+import { generateTextWithQwenFallback, probeQwenModelAvailability, streamTextWithQwenFallback } from "@/lib/qwen-fallback";
 import { buildDebriefSystemPrompt } from "@/lib/prompts/debrief";
 import { buildDecodeSystemPrompt } from "@/lib/prompts/decode";
 import { buildEvaluateSystemPrompt } from "@/lib/prompts/evaluate";
@@ -117,42 +123,64 @@ export async function POST(req: Request) {
       : null;
     let resolvedModelType: ModelType = modelType;
 
-    // Higher-tier models can be intermittently unreachable; preflight with timeout and gracefully fallback.
-    if (modelType === "pro" || modelType === "deep") {
-      try {
-        await withTimeout(
-          generateText({
-            model: getModel(modelType),
-            prompt: "health check",
-            maxOutputTokens: 4,
-          }),
-          8000,
-          "Model preflight timeout",
-        );
-      } catch {
-        resolvedModelType = modelType === "pro" ? "deep" : "fast";
-        if (resolvedModelType === "deep") {
-          try {
+    const resolvePreflightOrder = (): ModelType[] => {
+      if (modelType === "resume") return getFeatureFallbackOrder("resume");
+      if (modelType === "mock") return getFeatureFallbackOrder("mock");
+      if (modelType === "practice") return getFeatureFallbackOrder("practice");
+      if (modelType === "pro" || modelType === "deep") {
+        return ["pro", "fast"];
+      }
+      return [modelType];
+    };
+
+    const preflightOrder = resolvePreflightOrder();
+    if (preflightOrder.length > 1 || isFeatureModel(modelType)) {
+      for (const candidate of preflightOrder) {
+        try {
+          if (candidate === "resume") {
+            const qwenOk = await withTimeout(probeQwenModelAvailability(), 8000, "Model preflight timeout");
+            if (!qwenOk) throw new Error("All Qwen models unavailable");
+          } else {
             await withTimeout(
               generateText({
-                model: getModel("deep"),
+                model: getModel(candidate),
                 prompt: "health check",
                 maxOutputTokens: 4,
               }),
               8000,
-              "Deep model preflight timeout",
+              "Model preflight timeout",
             );
-          } catch {
-            resolvedModelType = "fast";
           }
+          resolvedModelType = candidate;
+          break;
+        } catch {
+          resolvedModelType = preflightOrder[preflightOrder.length - 1] ?? "fast";
         }
       }
     }
 
+    let finalSystem = system;
+    if (resolvedModelType === "mock") {
+      finalSystem = withClaudeRoleLock(system);
+    } else if (resolvedModelType === "resume") {
+      finalSystem = appendQwenConciseInstruction(system);
+    }
+
+    const streamMessages = (storySystemMessage ? [storySystemMessage, ...filteredMessages] : filteredMessages) as never;
+
+    if (resolvedModelType === "resume") {
+      const result = streamTextWithQwenFallback({
+        system: finalSystem,
+        messages: streamMessages,
+        maxOutputTokens: QWEN_MAX_OUTPUT_TOKENS,
+      });
+      return result.toUIMessageStreamResponse();
+    }
+
     const result = streamText({
       model: getModel(resolvedModelType),
-      system,
-      messages: (storySystemMessage ? [storySystemMessage, ...filteredMessages] : filteredMessages) as never,
+      system: finalSystem,
+      messages: streamMessages,
     });
 
     return result.toUIMessageStreamResponse();

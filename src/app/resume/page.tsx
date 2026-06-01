@@ -2,12 +2,15 @@
 
 import { useEffect, useMemo, useState } from "react";
 import ChatPanel from "@/components/ChatPanel";
+import { ModelSelect } from "@/components/ModelSelect";
 import { PageGuide } from "@/components/PageGuide";
 import { StoryCard } from "@/components/StoryCard";
 import { UpcomingInterviewFocus } from "@/components/UpcomingInterviewFocus";
 import { toastFetch } from "@/lib/toast-utils";
 import { getUpcomingInterview, readInterviewSchedule } from "@/lib/interview-schedule";
 import { buildResumeSystemPrompt } from "@/lib/prompts/resume";
+import type { ModelType } from "@/lib/llm";
+import { readModelSelection } from "@/lib/model-selection";
 import { userProfile } from "@/lib/user-profile";
 
 type ResumeVersion = {
@@ -253,6 +256,9 @@ export default function ResumePage() {
   const [platformDraft, setPlatformDraft] = useState(initialDraft.platformDraft);
   const [platformOutputs, setPlatformOutputs] = useState<PlatformOutputs>(initialDraft.platformOutputs ?? {});
   const [optimizingResume, setOptimizingResume] = useState(false);
+  const [optimizeModelType, setOptimizeModelType] = useState<ModelType>(() =>
+    readModelSelection("resume-optimize", "resume"),
+  );
   const [toast, setToast] = useState<{ type: "success" | "error" | "info"; message: string } | null>(null);
 
   const selectedVersion = useMemo(
@@ -524,6 +530,7 @@ When user asks for rewrite/edit, directly use the above context unless user expl
           targetJD,
           beforeText,
           targetCompany,
+          modelType: optimizeModelType,
         }),
       });
       const payload = (await response.json()) as {
@@ -838,6 +845,16 @@ When user asks for rewrite/edit, directly use the above context unless user expl
           tag="ATS + 差异化（Differentiation）"
         />
         <section className="neon-card rounded-2xl p-4">
+          <div className="mb-3">
+            <ModelSelect
+              value={optimizeModelType}
+              onChange={setOptimizeModelType}
+              storageKey="resume-optimize"
+              recommended="resume"
+              label="一键优化大模型"
+              selectClassName="max-w-md rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm"
+            />
+          </div>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm text-zinc-300">已自动读取上方 JD 与优化前文本，支持一键生成优化稿。</p>
             <button
@@ -1038,7 +1055,9 @@ When user asks for rewrite/edit, directly use the above context unless user expl
       </div>
       <ChatPanel
         systemPrompt={chatSystemPrompt}
-        modelType="deep"
+        modelType="resume"
+        recommendedModel="resume"
+        modelStorageKey="resume-chat"
         onMessagesChange={(messages) => {
           const latestAssistant = [...messages].reverse().find((item) => item.role === "assistant");
           if (latestAssistant?.content?.trim()) {

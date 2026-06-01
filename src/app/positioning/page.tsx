@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { PageGuide } from "@/components/PageGuide";
+import { ModelSelect } from "@/components/ModelSelect";
 import { toastFetch } from "@/lib/toast-utils";
 import type { ModelType } from "@/lib/llm";
 import { readModelSelection, writeModelSelection } from "@/lib/model-selection";
@@ -62,7 +63,7 @@ export default function PositioningPage() {
     pitchZh: false,
     pitchEn: false,
   });
-  const [modelType, setModelType] = useState<ModelType>(() => readModelSelection("positioning", "deep"));
+  const [modelType, setModelType] = useState<ModelType>(() => readModelSelection("positioning", "pro"));
   useEffect(() => {
     writeModelSelection("positioning", modelType);
   }, [modelType]);
@@ -508,17 +509,14 @@ export default function PositioningPage() {
               placeholder="转型故事"
               className="min-h-40 max-h-80 overflow-y-auto rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm leading-relaxed"
             />
-            <p className="text-xs text-zinc-500">模型</p>
-            <select
+            <ModelSelect
               value={modelType}
-              onChange={(event) => setModelType(event.target.value as ModelType)}
-              className="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm"
-            >
-              <option value="fast">⚡ DeepSeek V4 Flash</option>
-              <option value="deepseek-pro">🔬 DeepSeek V4 Pro</option>
-              <option value="deep">🧠 Gemini Flash（深度）</option>
-              <option value="pro">🔮 Gemini Pro（专业）</option>
-            </select>
+              onChange={setModelType}
+              storageKey="positioning"
+              recommended="pro"
+              label="大模型"
+              selectClassName="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm"
+            />
           </div>
           <div className="mt-3 flex items-center gap-2">
             <button

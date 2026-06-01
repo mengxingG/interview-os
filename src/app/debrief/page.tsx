@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { LoadingHint } from "@/components/LoadingHint";
 import { PageGuide } from "@/components/PageGuide";
+import { ModelSelect } from "@/components/ModelSelect";
 import VoiceInputButton from "@/components/VoiceInputButton";
 import { toastFetch } from "@/lib/toast-utils";
 import { INTERVIEW_INTELLIGENCE_KEY } from "@/lib/practice";
@@ -75,7 +76,7 @@ export default function DebriefPage() {
   const [signalNotes, setSignalNotes] = useState("");
   const [feedbackResult, setFeedbackResult] = useState("pending");
   const [feedbackText, setFeedbackText] = useState("");
-  const [modelType, setModelType] = useState<ModelType>(() => readModelSelection("debrief", "pro"));
+  const [modelType, setModelType] = useState<ModelType>(() => readModelSelection("debrief", "practice"));
   const [syncingQuestionBank, setSyncingQuestionBank] = useState(false);
   useEffect(() => {
     writeModelSelection("debrief", modelType);
@@ -175,11 +176,7 @@ export default function DebriefPage() {
       return;
     }
     setLoading(true);
-    setStatus(
-      modelType === "pro"
-        ? "正在整理逐字稿并进行 Gemini Pro 深度复盘（约 10-30 秒）..."
-        : "正在整理逐字稿并生成复盘...",
-    );
+    setStatus("正在使用 DeepSeek V4-Pro 整理逐字稿并生成复盘...");
     try {
       const response = await fetch("/api/debrief/analyze", {
         method: "POST",
@@ -561,17 +558,14 @@ export default function DebriefPage() {
             </select>
           </div>
           <div className="grid gap-1">
-            <p className="text-xs text-zinc-500">模型</p>
-            <select
+            <ModelSelect
               value={modelType}
-              onChange={(event) => setModelType(event.target.value as ModelType)}
-              className="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm"
-            >
-              <option value="fast">⚡ DeepSeek V4 Flash</option>
-              <option value="deepseek-pro">🔬 DeepSeek V4 Pro</option>
-              <option value="deep">🧠 Gemini Flash（深度）</option>
-              <option value="pro">🔮 Gemini Pro（专业）</option>
-            </select>
+              onChange={setModelType}
+              storageKey="debrief"
+              recommended="practice"
+              label="大模型"
+              selectClassName="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm"
+            />
           </div>
         </div>
       </section>

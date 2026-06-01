@@ -1,5 +1,5 @@
 import { generateText } from "ai";
-import { getModel, type ModelType } from "@/lib/llm";
+import { getModel, getModelFallbackOrder, type ModelType } from "@/lib/llm";
 import { buildUserContextForPrompt } from "@/lib/user-profile";
 import { composeReferenceBackedPrompt } from "@/lib/prompts/references/compose";
 
@@ -34,7 +34,7 @@ function parseJson(raw: string) {
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as PlanRequest;
-    const requestedModel = body.modelType ?? "deep";
+    const requestedModel = body.modelType ?? "pro";
     if (!body.decodeResult?.fit_analysis) {
       return Response.json({ error: "Missing decodeResult." }, { status: 400 });
     }
@@ -63,7 +63,7 @@ Rules:
 `.trim());
 
     const fallbackOrder: ModelType[] =
-      requestedModel === "pro" ? ["pro", "deep", "fast"] : requestedModel === "deep" ? ["deep", "fast"] : ["fast"];
+      getModelFallbackOrder(requestedModel);
     let text = "";
     for (const type of fallbackOrder) {
       try {

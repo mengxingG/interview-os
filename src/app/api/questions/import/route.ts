@@ -30,7 +30,7 @@ async function extractQuestionsByAI(transcript: string) {
   const system = `Extract interview questions from transcript. Return JSON:
 { "questions": string[] }`;
   const text = (await generateText({
-    model: getModel("deep"),
+    model: getModel("pro"),
     system,
     prompt: transcript.slice(0, 4000),
   })).text;
