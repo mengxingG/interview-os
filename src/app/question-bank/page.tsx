@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import ReactMarkdown from "react-markdown";
 import { LoadingHint } from "@/components/LoadingHint";
 import { PageGuide } from "@/components/PageGuide";
 import { ModelSelect } from "@/components/ModelSelect";
@@ -10,6 +9,14 @@ import VoiceInputButton from "@/components/VoiceInputButton";
 import { readModelSelection, writeModelSelection } from "@/lib/model-selection";
 import type { ModelType } from "@/lib/llm";
 import { getUpcomingInterview, readInterviewSchedule } from "@/lib/interview-schedule";
+
+type ResumeBaseOption = {
+  id: string;
+  title: string;
+  version?: string;
+  optimizedText: string;
+  isActive?: boolean;
+};
 
 type QuestionBankCategory =
   | "Behavioral"
@@ -115,18 +122,18 @@ export default function QuestionBankPage() {
   const [modelType, setModelType] = useState<ModelType>(() => readModelSelection("question-bank", "practice"));
   const [selectedQuestion, setSelectedQuestion] = useState<QuestionBankRow | null>(null);
   const [practiceAnswer, setPracticeAnswer] = useState("");
-  const [practiceFeedback, setPracticeFeedback] = useState("");
-  const [practiceStatus, setPracticeStatus] = useState("等待练习提交");
+  const [practiceStatus, setPracticeStatus] = useState("选中题目后可生成 AI 模拟回答");
   const [isPracticeSubmitting, setIsPracticeSubmitting] = useState(false);
-  const [extractingKnowledge, setExtractingKnowledge] = useState(false);
-  const [lastPracticeAvgScore, setLastPracticeAvgScore] = useState<number | null>(null);
-  const [lastPracticeResultStatus, setLastPracticeResultStatus] = useState<QuestionStatus | null>(null);
-  const [knowledgeExtractStatus, setKnowledgeExtractStatus] = useState("");
+  const [isGeneratingAnswer, setIsGeneratingAnswer] = useState(false);
+  const [isRefiningAnswer, setIsRefiningAnswer] = useState(false);
+  const [refineInstruction, setRefineInstruction] = useState("");
   const [practiceModelType, setPracticeModelType] = useState<ModelType>(() =>
     readModelSelection("question-bank-practice", "mock"),
   );
+  const [resumeBaseOptions, setResumeBaseOptions] = useState<ResumeBaseOption[]>([]);
+  const [selectedResumeBaseId, setSelectedResumeBaseId] = useState("");
+  const [loadingResumeBases, setLoadingResumeBases] = useState(false);
   const [moduleOpen, setModuleOpen] = useState(true);
-  const [selfScore, setSelfScore] = useState(3);
   const [query, setQuery] = useState("");
 
   const [categoryFilter, setCategoryFilter] = useState("all");
@@ -135,7 +142,6 @@ export default function QuestionBankPage() {
   const [difficultyFilter, setDifficultyFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [tagFilter, setTagFilter] = useState("all");
-  const [categoryPractice, setCategoryPractice] = useState("all");
   const [snapshotNowMs] = useState(() => Date.now());
   const [loadingHint, setLoadingHint] = useState("");
   const [isGeneratingPreview, setIsGeneratingPreview] = useState(false);
@@ -165,10 +171,47 @@ export default function QuestionBankPage() {
     }
   }, []);
 
+  const selectedResumeBaseText = useMemo(
+    () => resumeBaseOptions.find((item) => item.id === selectedResumeBaseId)?.optimizedText ?? "",
+    [resumeBaseOptions, selectedResumeBaseId],
+  );
+
   const companies = useMemo(
     () => ["all", ...Array.from(new Set(rows.map((row) => row.company).filter(Boolean)))],
     [rows],
   );
+
+  async function loadResumeBaseOptions() {
+    setLoadingResumeBases(true);
+    try {
+      const response = await fetch("/api/notion?resource=resume-bases", { cache: "no-store" });
+      const payload = (await response.json()) as { records?: ResumeBaseOption[]; error?: string };
+      if (!response.ok) throw new Error(payload.error ?? "加载简历底本失败");
+      const records = Array.isArray(payload.records) ? payload.records : [];
+      setResumeBaseOptions(records);
+      const activeId = records.find((item) => item.isActive)?.id ?? records[0]?.id ?? "";
+      setSelectedResumeBaseId((prev) => prev || activeId);
+      if (records.length === 0) {
+        setPracticeStatus("未找到简历底本，请先到「简历底本管理」创建。");
+      }
+    } catch (error) {
+      setPracticeStatus(error instanceof Error ? error.message : "加载简历底本失败");
+    } finally {
+      setLoadingResumeBases(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadResumeBaseOptions();
+  }, []);
+
+  function selectQuestionForPractice(row: QuestionBankRow) {
+    setSelectedQuestion(row);
+    markPracticeStarted(row.id);
+    setPracticeAnswer(row.myAnswer || "");
+    setRefineInstruction("");
+    setPracticeStatus(row.myAnswer?.trim() ? `已选中：${row.title}（已载入参考回答，可编辑后提交）` : `已选中：${row.title}`);
+  }
 
   async function loadRows() {
     setLoading(true);
@@ -459,89 +502,107 @@ export default function QuestionBankPage() {
     }
   }
 
-  function pickRandomQuestion(mode: "random" | "weak" | "company" | "category", targetCompany?: string) {
-    let pool = rows;
-    if (mode === "weak") {
-      pool = rows.filter((row) => row.status === "需加强" || row.status === "未练习");
-    } else if (mode === "company" && targetCompany) {
-      pool = rows.filter((row) => row.company === targetCompany);
-    } else if (mode === "category" && categoryPractice !== "all") {
-      pool = rows.filter((row) => row.category === categoryPractice);
-    }
-    if (pool.length === 0) {
-      setStatusText("当前条件下没有可练习的题目。");
+  async function generateMockAnswer(options?: { force?: boolean; regenerate?: boolean }) {
+    if (!selectedQuestion) {
+      setPracticeStatus("请先在左侧选择一道题目。");
       return;
     }
-    const picked = pool[Math.floor(Math.random() * pool.length)];
-    setSelectedQuestion(picked);
-    markPracticeStarted(picked.id);
-    setPracticeAnswer("");
-    setSelfScore(3);
-    setPracticeFeedback("");
-    setLastPracticeAvgScore(null);
-    setLastPracticeResultStatus(null);
-    setKnowledgeExtractStatus("");
-    setPracticeStatus(`已抽题：${picked.title}`);
-  }
-
-  async function submitPractice() {
-    if (!selectedQuestion) return;
-    if (!practiceAnswer.trim()) {
-      setPracticeStatus("请先填写你的回答。");
-      return;
+    const force = options?.force ?? false;
+    const regenerate = options?.regenerate ?? false;
+    if (!force && practiceAnswer.trim()) {
+      const ok = window.confirm("当前已有回答内容，确定要用 AI 重新生成并覆盖吗？");
+      if (!ok) return;
     }
-    setIsPracticeSubmitting(true);
-    setPracticeStatus(
-      practiceModelType === "mock"
-        ? "正在使用 Claude Sonnet 4.6 评分并写回..."
-        : practiceModelType === "pro"
-          ? "正在评分并写回（Gemini 3.5 Flash，通常 10-30 秒）"
-          : "正在评分并写回",
-    );
+    if (!selectedResumeBaseText.trim() && resumeBaseOptions.length === 0) {
+      await loadResumeBaseOptions();
+    }
+    setIsGeneratingAnswer(true);
+    setPracticeStatus(regenerate ? "正在重新生成模拟回答..." : "正在生成 AI 模拟回答...");
     try {
-      const evalRes = await fetch("/api/questions/practice", {
+      const response = await fetch("/api/questions/mock-answer", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           question: selectedQuestion.title,
-          answer: practiceAnswer,
-          selfScore,
+          category: selectedQuestion.category,
+          company: selectedQuestion.company,
+          role: selectedQuestion.role,
+          difficulty: selectedQuestion.difficulty,
           modelType: practiceModelType,
+          resumeBaseId: selectedResumeBaseId || undefined,
+          resumeContext: selectedResumeBaseText || undefined,
+          regenerate,
         }),
       });
-      const evalPayload = (await evalRes.json()) as {
-        result?: {
-          scores?: Record<string, number>;
-          gaps?: string[];
-          improvements?: string[];
-          avgScore?: number;
-          bestStory?: string;
-        };
-        error?: string;
-      };
-      if (!evalRes.ok || !evalPayload.result?.scores) {
-        throw new Error(evalPayload.error ?? "评分失败");
+      const payload = (await response.json()) as { answer?: string; error?: string };
+      if (!response.ok || !payload.answer?.trim()) {
+        throw new Error(payload.error ?? "生成模拟回答失败");
       }
-      const scoreList = Object.values(evalPayload.result.scores);
-      const avgScore =
-        typeof evalPayload.result.avgScore === "number"
-          ? evalPayload.result.avgScore
-          : scoreList.reduce((sum, item) => sum + item, 0) / scoreList.length;
-      const nextStatus: QuestionStatus = avgScore >= 4 ? "已掌握" : avgScore >= 3 ? "已练习" : "需加强";
-      const aiFeedback = [
-        `五维评分（1-5）：${Object.entries(evalPayload.result.scores)
-          .map(([k, v]) => `${k} ${v}`)
-          .join(" / ")}`,
-        ...(evalPayload.result.gaps?.length ? [`主要短板：${evalPayload.result.gaps.join("；")}`] : []),
-        ...(evalPayload.result.improvements?.length ? [`改进建议：${evalPayload.result.improvements.join("；")}`] : []),
-      ]
-        .filter(Boolean)
-        .join("\n");
-      setPracticeFeedback(aiFeedback);
-      setLastPracticeAvgScore(avgScore);
-      setLastPracticeResultStatus(nextStatus);
-      setKnowledgeExtractStatus("");
+      setPracticeAnswer(payload.answer.trim());
+      setPracticeStatus(regenerate ? "已刷新生成一版新回答，可继续编辑后提交。" : "已生成模拟回答，可继续编辑后提交。");
+    } catch (error) {
+      setPracticeStatus(error instanceof Error ? error.message : "生成模拟回答失败。");
+    } finally {
+      setIsGeneratingAnswer(false);
+    }
+  }
 
+  async function refineMockAnswer() {
+    if (!selectedQuestion) {
+      setPracticeStatus("请先在左侧选择一道题目。");
+      return;
+    }
+    if (!practiceAnswer.trim()) {
+      setPracticeStatus("请先生成或填写一份回答，再进行微调。");
+      return;
+    }
+    if (!refineInstruction.trim()) {
+      setPracticeStatus("请先填写微调建议。");
+      return;
+    }
+    if (!selectedResumeBaseText.trim() && resumeBaseOptions.length === 0) {
+      await loadResumeBaseOptions();
+    }
+    setIsRefiningAnswer(true);
+    setPracticeStatus("正在按建议微调现有回答...");
+    try {
+      const response = await fetch("/api/questions/refine-answer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question: selectedQuestion.title,
+          currentAnswer: practiceAnswer,
+          instruction: refineInstruction.trim(),
+          category: selectedQuestion.category,
+          company: selectedQuestion.company,
+          role: selectedQuestion.role,
+          modelType: practiceModelType,
+          resumeBaseId: selectedResumeBaseId || undefined,
+          resumeContext: selectedResumeBaseText || undefined,
+        }),
+      });
+      const payload = (await response.json()) as { answer?: string; error?: string };
+      if (!response.ok || !payload.answer?.trim()) {
+        throw new Error(payload.error ?? "微调回答失败");
+      }
+      setPracticeAnswer(payload.answer.trim());
+      setPracticeStatus("已按建议完成微调，可继续修改建议再次微调，或提交到 Notion。");
+    } catch (error) {
+      setPracticeStatus(error instanceof Error ? error.message : "微调回答失败。");
+    } finally {
+      setIsRefiningAnswer(false);
+    }
+  }
+
+  async function submitAnswerToNotion() {
+    if (!selectedQuestion) return;
+    if (!practiceAnswer.trim()) {
+      setPracticeStatus("请先生成或填写回答再提交。");
+      return;
+    }
+    setIsPracticeSubmitting(true);
+    setPracticeStatus("正在提交回答到 Notion...");
+    try {
       const updateRes = await fetch("/api/questions", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -549,52 +610,18 @@ export default function QuestionBankPage() {
           pageId: selectedQuestion.id,
           data: {
             myAnswer: practiceAnswer,
-            aiFeedback,
-            bestStory: evalPayload.result.bestStory ?? "",
-            lastScore: avgScore,
-            status: nextStatus,
-            lastPracticed: new Date().toISOString().slice(0, 10),
-            practiceCount: selectedQuestion.practiceCount + 1,
           },
         }),
       });
       const updatePayload = (await updateRes.json()) as { error?: string };
       if (!updateRes.ok) throw new Error(updatePayload.error ?? "写回题库失败");
-      setPracticeStatus(`练习已完成，均分 ${avgScore.toFixed(1)}，状态更新为「${nextStatus}」。`);
+      setSelectedQuestion((prev) => (prev ? { ...prev, myAnswer: practiceAnswer } : prev));
+      setPracticeStatus("回答已提交到 Notion。");
       await loadRows();
     } catch (error) {
-      setPracticeStatus(error instanceof Error ? error.message : "提交练习失败。");
+      setPracticeStatus(error instanceof Error ? error.message : "提交回答失败。");
     } finally {
       setIsPracticeSubmitting(false);
-    }
-  }
-
-  async function extractMissingKnowledge() {
-    if (!selectedQuestion || !practiceAnswer.trim()) {
-      setKnowledgeExtractStatus("请先完成一次作答。");
-      return;
-    }
-    setExtractingKnowledge(true);
-    try {
-      const response = await fetch("/api/question-bank/extract-knowledge", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          questionPageId: selectedQuestion.id,
-          question: selectedQuestion.title,
-          answer: practiceAnswer,
-          aiFeedback: practiceFeedback,
-          avgScore: lastPracticeAvgScore,
-          modelType: practiceModelType,
-        }),
-      });
-      const payload = (await response.json()) as { ok?: boolean; count?: number; error?: string };
-      if (!response.ok || !payload.ok) throw new Error(payload.error ?? "提取失败");
-      setKnowledgeExtractStatus(`已提取并写入 ${payload.count ?? 0} 条知识点，已绑定当前题目关系。`);
-    } catch (error) {
-      setKnowledgeExtractStatus(error instanceof Error ? error.message : "提取缺失知识点失败");
-    } finally {
-      setExtractingKnowledge(false);
     }
   }
 
@@ -647,7 +674,7 @@ export default function QuestionBankPage() {
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div>
             <h1 className="text-xl font-semibold text-zinc-100">面试题库（Question Bank）</h1>
-            <p className="mt-1 text-sm text-zinc-400">维护高频题、持续练习并回写五维评分。</p>
+            <p className="mt-1 text-sm text-zinc-400">维护高频题，用 AI 结合简历底本生成口语化参考回答并写回 Notion。</p>
           </div>
           <div className="grid grid-cols-2 gap-2 text-xs md:grid-cols-4">
             <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 px-3 py-2 text-zinc-200">总题数：{stats.total}</div>
@@ -704,10 +731,11 @@ export default function QuestionBankPage() {
         pageKey="question-bank"
         title="📖 面试题库使用指南"
         items={[
-          "先用筛选器聚焦目标公司/题型，再开始练习。",
+          "先用筛选器聚焦目标公司/题型，再在左侧选中题目进入答案整理面板。",
           "可用 AI 批量生成 10 道高频题，自动入库。",
-          "随机抽题、弱项专练、公司专练都支持练习后自动评分回写。",
-          "评分统一采用五维 1-5 分，便于和 Mock/Evaluate 对齐。",
+          "答案整理面板可基于简历底本生成口语化 AI 模拟回答，不满意可点刷新重生成。",
+          "也可填写微调建议，对现有回答做局部调整（不会整段重写）。",
+          "编辑满意后点「提交到 Notion」，仅写回参考回答（My Answer）。",
         ]}
       />
       <UpcomingInterviewFocus />
@@ -805,7 +833,7 @@ export default function QuestionBankPage() {
                     </span>
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2">
-                    <button type="button" onClick={() => setSelectedQuestion(row)} className="rounded-lg border border-violet-500/40 bg-violet-500/10 px-3 py-1.5 text-xs text-violet-100">开始练习</button>
+                    <button type="button" onClick={() => selectQuestionForPractice(row)} className="rounded-lg border border-violet-500/40 bg-violet-500/10 px-3 py-1.5 text-xs text-violet-100">整理答案</button>
                     <button type="button" onClick={() => setExpandedId((prev) => (prev === row.id ? null : row.id))} className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-200">{expandedId === row.id ? "收起详情" : "查看详情"}</button>
                     <button
                       type="button"
@@ -857,175 +885,163 @@ export default function QuestionBankPage() {
           </div>
         ) : (
           <div className="neon-card flex min-h-40 items-center justify-center rounded-2xl p-4 text-sm text-zinc-400">
-            题库列表已收起，右侧练习面板可继续使用。
+            题库列表已收起，右侧答案整理面板可继续使用。
           </div>
         )}
 
-        <aside className="neon-card sticky top-4 h-fit rounded-2xl p-4">
-          <h2 className="text-lg font-semibold text-zinc-100">练习面板</h2>
+        <aside className="neon-card sticky top-4 flex max-h-[calc(100vh-2rem)] flex-col rounded-2xl p-4">
+          <h2 className="text-lg font-semibold text-zinc-100">答案整理面板</h2>
           <div className="mt-2 rounded-xl border border-cyan-500/25 bg-cyan-500/10 p-3 text-xs text-cyan-100">
-            <p className="font-medium">练习说明</p>
+            <p className="font-medium">使用说明</p>
             <p className="mt-1 text-cyan-100/90">
-              先在下方选择练习模式，再根据需要设置公司/分类条件，点击对应按钮开始抽题答题。
+              左侧选中题目后，可基于简历底本生成口语化参考回答；可用建议局部微调，或刷新重生成，编辑满意后提交到 Notion。
             </p>
           </div>
 
-          <div className="mt-3 space-y-3">
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-3">
-              <p className="mb-2 text-xs font-medium text-zinc-300">步骤 1：选择练习模式</p>
-              <div className="grid grid-cols-2 gap-2">
-                <button type="button" onClick={() => pickRandomQuestion("random")} className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200">
-                  随机抽题
-                </button>
-                <button type="button" onClick={() => pickRandomQuestion("weak")} className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200">
-                  弱项专练
-                </button>
-                <button type="button" onClick={() => pickRandomQuestion("company", companyFilter !== "all" ? companyFilter : undefined)} className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200">
-                  公司专练
-                </button>
-                <button type="button" onClick={() => pickRandomQuestion("category")} className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200">
-                  分类专练
-                </button>
-              </div>
-            </div>
-
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-3">
-              <p className="mb-2 text-xs font-medium text-zinc-300">步骤 2：设置专练条件（可选）</p>
-              <div className="grid gap-2 md:grid-cols-2">
-                <select onChange={(event) => pickRandomQuestion("company", event.target.value)} className="rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-2 text-xs text-zinc-200">
-                  <option value="">公司专练：选择公司</option>
-                  {rows
-                    .map((row) => row.company)
-                    .filter(Boolean)
-                    .filter((value, index, arr) => arr.indexOf(value) === index)
-                    .map((company) => (
-                      <option key={company} value={company}>
-                        {company}
-                      </option>
-                    ))}
-                </select>
-                <select value={categoryPractice} onChange={(event) => setCategoryPractice(event.target.value)} className="rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-2 text-xs text-zinc-200">
-                  <option value="all">分类专练：选择分类</option>
-                  {categories.map((item) => (
-                    <option key={item} value={item}>
-                      {renderCategoryLabel(item)}
+          <div className="mt-3 space-y-2">
+            <div>
+              <p className="mb-1 text-xs text-zinc-400">简历底本</p>
+              <div className="flex gap-2">
+                <select
+                  value={selectedResumeBaseId}
+                  onChange={(e) => setSelectedResumeBaseId(e.target.value)}
+                  className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200"
+                  disabled={loadingResumeBases || resumeBaseOptions.length === 0}
+                >
+                  {resumeBaseOptions.length === 0 ? <option value="">暂无底本</option> : null}
+                  {resumeBaseOptions.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.title}
+                      {item.isActive ? "（当前活跃）" : ""}
                     </option>
                   ))}
                 </select>
+                <button
+                  type="button"
+                  onClick={() => void loadResumeBaseOptions()}
+                  disabled={loadingResumeBases}
+                  className="shrink-0 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs text-zinc-300 disabled:opacity-60"
+                >
+                  {loadingResumeBases ? "加载中" : "刷新底本"}
+                </button>
               </div>
             </div>
-          </div>
-
-          <div className="mt-3">
             <ModelSelect
               value={practiceModelType}
               onChange={setPracticeModelType}
               storageKey="question-bank-practice"
               recommended="mock"
-              label="练习评分大模型"
+              label="模拟回答大模型"
               selectClassName="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200"
             />
           </div>
-          <LoadingHint active={isPracticeSubmitting} text={practiceStatus} className="mt-2" />
+          <LoadingHint
+            active={isPracticeSubmitting || isGeneratingAnswer || isRefiningAnswer}
+            text={practiceStatus}
+            className="mt-2"
+          />
 
           {selectedQuestion ? (
-            <div className="mt-4 rounded-xl border border-zinc-800 bg-zinc-950/70 p-3">
+            <div className="mt-4 flex min-h-0 flex-1 flex-col overflow-auto rounded-xl border border-zinc-800 bg-zinc-950/70 p-3">
               <p className="text-xs text-zinc-500">当前题目</p>
               <p className="mt-1 text-sm text-zinc-100">{selectedQuestion.title}</p>
-              <p className="mt-3 text-xs text-zinc-500">你的回答（My Answer）</p>
-              <div className="relative mt-2">
-                <textarea
-                  value={practiceAnswer}
-                  onChange={(event) => setPracticeAnswer(event.target.value)}
-                  className="h-28 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 pb-14 pr-28 text-sm text-zinc-100"
-                  placeholder="输入你的回答..."
+              <div className="mt-3 flex items-center justify-between gap-2">
+                <p className="text-xs text-zinc-500">参考回答（可编辑，右下角可拖拽调整高度）</p>
+                <VoiceInputButton
+                  compact
+                  onTranscribe={(text, actualDuration) => {
+                    setPracticeAnswer((prev) => (prev.trim() ? `${prev}\n${text}` : text));
+                    setPracticeStatus(
+                      actualDuration && actualDuration > 0
+                        ? `已追加 ${actualDuration} 秒语音识别内容，请检查后提交。`
+                        : "已将语音识别内容追加到回答中，请检查后提交。",
+                    );
+                  }}
+                  disabled={isPracticeSubmitting || isGeneratingAnswer || isRefiningAnswer}
+                  maxDuration={120}
                 />
-                <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 rounded-b-xl bg-gradient-to-t from-zinc-900 via-zinc-900/95 to-transparent" />
-                <div className="absolute bottom-3 right-3">
-                  <VoiceInputButton
-                    compact
-                    onTranscribe={(text, actualDuration) => {
-                      setPracticeAnswer((prev) => (prev.trim() ? `${prev}\n${text}` : text));
-                      setPracticeStatus(
-                        actualDuration && actualDuration > 0
-                          ? `已追加 ${actualDuration} 秒语音识别内容，请检查后提交评分。`
-                          : "已将语音识别内容追加到回答中，请检查后提交评分。",
-                      );
-                    }}
-                    disabled={isPracticeSubmitting}
-                    maxDuration={120}
-                  />
-                </div>
               </div>
-              <p className="mt-2 text-xs text-zinc-500">你的自评分（1-5）</p>
-              <input
-                type="number"
-                min={1}
-                max={5}
-                value={selfScore}
-                onChange={(event) => setSelfScore(Number(event.target.value))}
-                className="mt-1 w-28 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+              <textarea
+                value={practiceAnswer}
+                onChange={(event) => setPracticeAnswer(event.target.value)}
+                className="mt-2 min-h-[22rem] w-full resize-y rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-3 text-sm leading-6 text-zinc-100"
+                placeholder="点击下方「AI 模拟回答」生成，或直接手写/粘贴后编辑..."
+                disabled={isGeneratingAnswer || isPracticeSubmitting || isRefiningAnswer}
               />
-              <div className="mt-3 flex gap-2">
+              <div className="mt-3 flex flex-wrap gap-2">
                 <button
                   type="button"
-                  onClick={submitPractice}
-                  disabled={isPracticeSubmitting}
-                  className="rounded-lg border border-violet-500/45 bg-violet-500/15 px-3 py-2 text-xs text-violet-100"
+                  onClick={() => void generateMockAnswer({ regenerate: false })}
+                  disabled={isGeneratingAnswer || isPracticeSubmitting || isRefiningAnswer}
+                  className="rounded-lg border border-cyan-500/45 bg-cyan-500/15 px-3 py-2 text-xs text-cyan-100 disabled:opacity-60"
                 >
-                  {isPracticeSubmitting ? <span className="loading-dots">提交中</span> : "提交并写回评分"}
+                  {isGeneratingAnswer ? <span className="loading-dots">生成中</span> : "AI 模拟回答"}
                 </button>
                 <button
                   type="button"
-                  onClick={() => pickRandomQuestion("random")}
-                  className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs text-zinc-100"
+                  onClick={() => void generateMockAnswer({ force: true, regenerate: true })}
+                  disabled={isGeneratingAnswer || isPracticeSubmitting || isRefiningAnswer}
+                  className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs text-zinc-100 disabled:opacity-60"
                 >
-                  下一题
+                  刷新
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void submitAnswerToNotion()}
+                  disabled={isPracticeSubmitting || isGeneratingAnswer || isRefiningAnswer}
+                  className="rounded-lg border border-violet-500/45 bg-violet-500/15 px-3 py-2 text-xs text-violet-100 disabled:opacity-60"
+                >
+                  {isPracticeSubmitting ? <span className="loading-dots">提交中</span> : "提交到 Notion"}
                 </button>
               </div>
-              {practiceFeedback ? (
-                <div className="prose prose-invert mt-3 max-w-none rounded-lg border border-zinc-800 bg-zinc-900 p-3 text-xs text-zinc-200">
-                  <ReactMarkdown>{practiceFeedback}</ReactMarkdown>
-                </div>
-              ) : null}
-              {practiceFeedback &&
-              ((typeof lastPracticeAvgScore === "number" && lastPracticeAvgScore < 3.2) ||
-                lastPracticeResultStatus === "需加强" ||
-                /基础薄弱|知识薄弱|概念不清/i.test(practiceFeedback)) ? (
-                <div className="mt-3 rounded-lg border border-amber-500/35 bg-amber-500/10 p-3">
-                  <p className="text-xs text-amber-100">检测到基础薄弱，建议先补知识点再继续刷题。</p>
-                  <div className="mt-2 flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        void extractMissingKnowledge();
-                      }}
-                      disabled={extractingKnowledge}
-                      className="rounded-lg border border-amber-500/45 bg-amber-500/20 px-3 py-1.5 text-xs text-amber-100 disabled:opacity-60"
-                    >
-                      {extractingKnowledge ? <span className="loading-dots">提取中</span> : "提取缺失知识点"}
-                    </button>
-                    <a href="/train" className="text-xs text-cyan-300 underline underline-offset-2">
-                      去知识训练
-                    </a>
-                  </div>
-                  {knowledgeExtractStatus ? <p className="mt-2 text-xs text-zinc-300">{knowledgeExtractStatus}</p> : null}
-                </div>
-              ) : null}
+              <div className="mt-3 rounded-lg border border-zinc-800 bg-zinc-900/60 p-3">
+                <p className="text-xs text-zinc-500">微调建议（基于现有回答局部调整，不会整段重写）</p>
+                <textarea
+                  value={refineInstruction}
+                  onChange={(event) => setRefineInstruction(event.target.value)}
+                  className="mt-2 min-h-[5rem] w-full resize-y rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+                  placeholder="例如：少提技术细节，多讲业务结果；语气再口语一点；别提那个项目，改成合规助手"
+                  disabled={isGeneratingAnswer || isPracticeSubmitting || isRefiningAnswer}
+                />
+                <button
+                  type="button"
+                  onClick={() => void refineMockAnswer()}
+                  disabled={
+                    isRefiningAnswer ||
+                    isGeneratingAnswer ||
+                    isPracticeSubmitting ||
+                    !practiceAnswer.trim() ||
+                    !refineInstruction.trim()
+                  }
+                  className="mt-2 rounded-lg border border-amber-500/45 bg-amber-500/15 px-3 py-2 text-xs text-amber-100 disabled:opacity-60"
+                >
+                  {isRefiningAnswer ? <span className="loading-dots">微调中</span> : "按建议微调"}
+                </button>
+              </div>
             </div>
-          ) : null}
+          ) : (
+            <div className="mt-4 rounded-xl border border-dashed border-zinc-700 bg-zinc-950/40 p-6 text-center text-sm text-zinc-400">
+              请从左侧题库点击「整理答案」选中一道题。
+            </div>
+          )}
 
           <div className="mt-4 border-t border-zinc-800 pt-3">
-            <p className="text-sm font-medium text-zinc-200">最近练习记录</p>
+            <p className="text-sm font-medium text-zinc-200">最近整理记录</p>
             <div className="mt-2 space-y-2 text-xs text-zinc-400">
               {recentPracticeRows.length === 0 ? (
-                <p>暂无练习记录</p>
+                <p>暂无记录</p>
               ) : (
                 recentPracticeRows.map((row) => (
-                  <p key={`recent-${row.id}`}>
-                    - {row.title.slice(0, 22)}
-                    {row.title.length > 22 ? "..." : ""} {row.lastScore ? row.lastScore.toFixed(1) : "-"}
-                  </p>
+                  <button
+                    key={`recent-${row.id}`}
+                    type="button"
+                    onClick={() => selectQuestionForPractice(row)}
+                    className="block w-full truncate text-left hover:text-zinc-200"
+                  >
+                    - {row.title.slice(0, 28)}
+                    {row.title.length > 28 ? "..." : ""}
+                    {row.myAnswer?.trim() ? " · 已有答案" : ""}
+                  </button>
                 ))
               )}
             </div>
