@@ -170,7 +170,7 @@ export default function ResearchPage() {
         items={[
           "先用快速扫描（quick）跑一遍，再用深度研究（deep）输出面试准备假设。",
           "研究结果可在面试备战页面作为「研究摘要」继续使用。",
-          "重点关注「面试风格预判」，提前匹配你的表达风格
+          "重点关注「面试风格预判」，提前匹配你的表达风格。",
         ]}
       />
       <section className="grid gap-4 xl:grid-cols-[1fr_1.2fr]">

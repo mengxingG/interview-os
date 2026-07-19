@@ -6,9 +6,17 @@ import { PageGuide } from "@/components/PageGuide";
 import { ModelSelect } from "@/components/ModelSelect";
 import { UpcomingInterviewFocus } from "@/components/UpcomingInterviewFocus";
 import VoiceInputButton from "@/components/VoiceInputButton";
+import { QuestionBankGlossary } from "@/components/QuestionBankGlossary";
 import { readModelSelection, writeModelSelection } from "@/lib/model-selection";
 import type { ModelType } from "@/lib/llm";
 import { getUpcomingInterview, readInterviewSchedule } from "@/lib/interview-schedule";
+import {
+  DEFAULT_QUESTION_BANK_CATEGORY,
+  QUESTION_BANK_CATEGORIES,
+  isQuestionBankCategory,
+  normalizeQuestionBankCategory,
+  type QuestionBankCategory,
+} from "@/lib/question-bank-categories";
 
 type ResumeBaseOption = {
   id: string;
@@ -18,13 +26,6 @@ type ResumeBaseOption = {
   isActive?: boolean;
 };
 
-type QuestionBankCategory =
-  | "Behavioral"
-  | "Product Sense"
-  | "Technical"
-  | "Case Study"
-  | "System Design"
-  | "Culture Fit";
 type Difficulty = "简单" | "中等" | "困难";
 type QuestionStatus = "未练习" | "已练习" | "已掌握" | "需加强";
 
@@ -55,25 +56,10 @@ type SmartQuestionExtractResult = {
   difficulty?: string;
 };
 
-const categories: Array<QuestionBankCategory> = [
-  "Behavioral",
-  "Product Sense",
-  "Technical",
-  "Case Study",
-  "System Design",
-  "Culture Fit",
-];
-const categoryLabels: Record<QuestionBankCategory, string> = {
-  Behavioral: "行为面（Behavioral）",
-  "Product Sense": "产品感（Product Sense）",
-  Technical: "技术面（Technical）",
-  "Case Study": "案例题（Case Study）",
-  "System Design": "系统设计（System Design）",
-  "Culture Fit": "文化匹配（Culture Fit）",
-};
+const categories: Array<QuestionBankCategory> = [...QUESTION_BANK_CATEGORIES];
 
 function renderCategoryLabel(category: string) {
-  return categoryLabels[category as QuestionBankCategory] ?? category;
+  return category;
 }
 const sources = ["其他", "手动输入", "牛客网", "模拟面试", "小红书", "真实面试", "AI生成"];
 const difficulties: Array<Difficulty> = ["简单", "中等", "困难"];
@@ -82,7 +68,7 @@ const DASHBOARD_PRACTICE_START_KEY = "dashboard-practice-started";
 
 const defaultDraft: Omit<QuestionBankRow, "id"> = {
   title: "",
-  category: "Behavioral",
+  category: DEFAULT_QUESTION_BANK_CATEGORY,
   source: "手动输入",
   company: "",
   role: "",
@@ -134,14 +120,11 @@ export default function QuestionBankPage() {
   const [selectedResumeBaseId, setSelectedResumeBaseId] = useState("");
   const [loadingResumeBases, setLoadingResumeBases] = useState(false);
   const [moduleOpen, setModuleOpen] = useState(true);
+  const [mainTab, setMainTab] = useState<"questions" | "glossary">("questions");
   const [query, setQuery] = useState("");
-
-  const [categoryFilter, setCategoryFilter] = useState("all");
-  const [sourceFilter, setSourceFilter] = useState("all");
   const [companyFilter, setCompanyFilter] = useState("all");
-  const [difficultyFilter, setDifficultyFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
   const [tagFilter, setTagFilter] = useState("all");
+  const [listSort, setListSort] = useState<"frequency" | "category">("frequency");
   const [snapshotNowMs] = useState(() => Date.now());
   const [loadingHint, setLoadingHint] = useState("");
   const [isGeneratingPreview, setIsGeneratingPreview] = useState(false);
@@ -158,6 +141,9 @@ export default function QuestionBankPage() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
+    if (params.get("tab") === "glossary") {
+      setMainTab("glossary");
+    }
     const company = (params.get("company") || "").trim();
     if (company) {
       setCompanyFilter(company);
@@ -174,11 +160,6 @@ export default function QuestionBankPage() {
   const selectedResumeBaseText = useMemo(
     () => resumeBaseOptions.find((item) => item.id === selectedResumeBaseId)?.optimizedText ?? "",
     [resumeBaseOptions, selectedResumeBaseId],
-  );
-
-  const companies = useMemo(
-    () => ["all", ...Array.from(new Set(rows.map((row) => row.company).filter(Boolean)))],
-    [rows],
   );
 
   async function loadResumeBaseOptions() {
@@ -218,12 +199,12 @@ export default function QuestionBankPage() {
     setLoadingHint("正在读取题库");
     try {
       const queryParams = new URLSearchParams({
-        category: categoryFilter,
-        source: sourceFilter,
+        category: "all",
+        source: "all",
         company: companyFilter,
-        status: statusFilter,
-        q: query,
-        tags: tagFilter === "all" ? "" : tagFilter,
+        status: "all",
+        q: "",
+        tags: "",
       }).toString();
       const response = await fetch(`/api/questions?${queryParams}`);
       let payload: { rows?: QuestionBankRow[]; error?: string; detail?: string } = {};
@@ -265,7 +246,7 @@ export default function QuestionBankPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadRows();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [categoryFilter, sourceFilter, companyFilter, difficultyFilter, statusFilter, query, tagFilter]);
+  }, [companyFilter]);
 
   useEffect(() => {
     let mounted = true;
@@ -364,9 +345,9 @@ export default function QuestionBankPage() {
       setDraft((prev) => ({
         ...prev,
         title: payload.result?.title?.trim() || prev.title,
-        category: categories.includes(payload.result?.category as QuestionBankCategory)
+        category: isQuestionBankCategory(String(payload.result?.category ?? "").trim())
           ? (payload.result?.category as QuestionBankCategory)
-          : prev.category,
+          : normalizeQuestionBankCategory(payload.result?.category),
         difficulty:
           payload.result?.difficulty === "简单" ||
           payload.result?.difficulty === "中等" ||
@@ -659,6 +640,58 @@ export default function QuestionBankPage() {
     }).length;
     return { total: rows.length, mastered, weak, weekly };
   }, [rows, snapshotNowMs]);
+
+  const tagStats = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const row of rows) {
+      for (const tag of row.tags) {
+        const name = tag.trim();
+        if (!name) continue;
+        map.set(name, (map.get(name) ?? 0) + 1);
+      }
+    }
+    // 若题库尚无 Tags，则退化为按分类展示 chips，避免筛选区空白
+    if (map.size === 0) {
+      for (const row of rows) {
+        const name = renderCategoryLabel(row.category);
+        map.set(name, (map.get(name) ?? 0) + 1);
+      }
+    }
+    const list = Array.from(map.entries()).map(([name, count]) => ({ name, count }));
+    if (listSort === "frequency") {
+      list.sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, "zh"));
+    } else {
+      list.sort((a, b) => a.name.localeCompare(b.name, "zh"));
+    }
+    return list;
+  }, [rows, listSort]);
+
+  const displayedRows = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    let list = rows.filter((row) => {
+      if (tagFilter !== "all") {
+        const inTags = row.tags.includes(tagFilter);
+        const inCategory = renderCategoryLabel(row.category) === tagFilter;
+        if (!inTags && !inCategory) return false;
+      }
+      if (!q) return true;
+      const haystack = [row.title, row.company, row.role, row.source, row.category, ...row.tags]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(q);
+    });
+    if (listSort === "frequency") {
+      list = [...list].sort(
+        (a, b) => b.practiceCount - a.practiceCount || a.title.localeCompare(b.title, "zh"),
+      );
+    } else {
+      list = [...list].sort(
+        (a, b) => a.category.localeCompare(b.category, "zh") || a.title.localeCompare(b.title, "zh"),
+      );
+    }
+    return list;
+  }, [rows, query, tagFilter, listSort]);
+
   const recentPracticeRows = useMemo(
     () =>
       rows
@@ -731,82 +764,133 @@ export default function QuestionBankPage() {
         pageKey="question-bank"
         title="📖 面试题库使用指南"
         items={[
-          "先用筛选器聚焦目标公司/题型，再在左侧选中题目进入答案整理面板。",
+          "先用搜索或标签 chips 聚焦题目，再在左侧选中进入答案整理面板。",
           "可用 AI 批量生成 10 道高频题，自动入库。",
           "答案整理面板可基于简历底本生成口语化 AI 模拟回答，不满意可点刷新重生成。",
           "也可填写微调建议，对现有回答做局部调整（不会整段重写）。",
           "编辑满意后点「提交到 Notion」，仅写回参考回答（My Answer）。",
+          "看题时遇到陌生术语，可切到「术语速查」Tab 快速对照。",
         ]}
       />
       <UpcomingInterviewFocus />
 
+      <div className="inline-flex rounded-full border border-zinc-700 bg-zinc-950/80 p-0.5">
+        <button
+          type="button"
+          onClick={() => setMainTab("questions")}
+          className={`rounded-full px-4 py-1.5 text-sm transition ${
+            mainTab === "questions" ? "bg-zinc-700 text-zinc-100" : "text-zinc-400 hover:text-zinc-200"
+          }`}
+        >
+          题目列表
+        </button>
+        <button
+          type="button"
+          onClick={() => setMainTab("glossary")}
+          className={`rounded-full px-4 py-1.5 text-sm transition ${
+            mainTab === "glossary" ? "bg-zinc-700 text-zinc-100" : "text-zinc-400 hover:text-zinc-200"
+          }`}
+        >
+          术语速查
+        </button>
+      </div>
+
+      {mainTab === "glossary" ? (
+        <QuestionBankGlossary />
+      ) : (
       <section className="grid gap-4 xl:grid-cols-[11fr_9fr]">
         {moduleOpen ? (
           <div className="neon-card rounded-2xl p-4">
             <p className="mb-3 text-sm font-medium text-zinc-200">筛选与题库列表</p>
-            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-              <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)} className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200">
-                <option value="all">分类（全部）</option>
-                {categories.map((item) => (
-                  <option key={item} value={item}>
-                    {renderCategoryLabel(item)}
-                  </option>
-                ))}
-              </select>
-              <select value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value)} className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200">
-                <option value="all">来源（全部）</option>
-                {sources.map((item) => (
-                  <option key={item} value={item}>
-                    {item}
-                  </option>
-                ))}
-              </select>
-              <select value={companyFilter} onChange={(event) => setCompanyFilter(event.target.value)} className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200">
-                {companies.map((item) => (
-                  <option key={item} value={item}>
-                    {item === "all" ? "公司（全部）" : item}
-                  </option>
-                ))}
-              </select>
-              <select value={difficultyFilter} onChange={(event) => setDifficultyFilter(event.target.value)} className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200">
-                <option value="all">难度（全部）</option>
-                {difficulties.map((item) => (
-                  <option key={item} value={item}>
-                    {item}
-                  </option>
-                ))}
-              </select>
-              <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200">
-                <option value="all">状态（全部）</option>
-                {statuses.map((item) => (
-                  <option key={item} value={item}>
-                    {item}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="mt-3 grid gap-3 md:grid-cols-2">
+
+            <div className="relative">
+              <svg
+                aria-hidden
+                viewBox="0 0 24 24"
+                className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <circle cx="11" cy="11" r="7" />
+                <path d="m20 20-3.5-3.5" strokeLinecap="round" />
+              </svg>
               <input
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="搜索题目/公司/岗位"
-                className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
-              />
-              <input
-                value={tagFilter === "all" ? "" : tagFilter}
-                onChange={(event) => setTagFilter(event.target.value.trim() || "all")}
-                placeholder="标签筛选（Tag）"
-                className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                placeholder="搜索面试题或考察点关键词，如 RAG、离职、商业化..."
+                className="w-full rounded-2xl border border-zinc-700 bg-zinc-900 py-3 pl-10 pr-4 text-sm text-zinc-100 placeholder:text-zinc-500"
               />
             </div>
 
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setTagFilter("all")}
+                className={`rounded-full px-3 py-1.5 text-xs transition ${
+                  tagFilter === "all"
+                    ? "bg-zinc-100 font-medium text-zinc-900"
+                    : "border border-zinc-700 bg-zinc-900/70 text-zinc-300 hover:border-zinc-500"
+                }`}
+              >
+                全部 {rows.length}
+              </button>
+              {tagStats.map((tag) => {
+                const active = tagFilter === tag.name;
+                return (
+                  <button
+                    key={tag.name}
+                    type="button"
+                    onClick={() => setTagFilter(active ? "all" : tag.name)}
+                    className={`rounded-full px-3 py-1.5 text-xs transition ${
+                      active
+                        ? "bg-zinc-100 font-medium text-zinc-900"
+                        : "border border-zinc-700 bg-zinc-900/70 text-zinc-300 hover:border-zinc-500"
+                    }`}
+                  >
+                    {tag.name} {tag.count}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm text-zinc-400">共 {displayedRows.length} 道题</p>
+              <div className="inline-flex rounded-full border border-zinc-700 bg-zinc-950/80 p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setListSort("frequency")}
+                  className={`rounded-full px-3 py-1.5 text-xs transition ${
+                    listSort === "frequency"
+                      ? "bg-zinc-700 text-zinc-100"
+                      : "text-zinc-400 hover:text-zinc-200"
+                  }`}
+                >
+                  按频次
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setListSort("category")}
+                  className={`rounded-full px-3 py-1.5 text-xs transition ${
+                    listSort === "category"
+                      ? "bg-zinc-700 text-zinc-100"
+                      : "text-zinc-400 hover:text-zinc-200"
+                  }`}
+                >
+                  按类别
+                </button>
+              </div>
+            </div>
+
             <div className="mt-4 space-y-3">
-              {rows.length === 0 && !loading ? (
+              {displayedRows.length === 0 && !loading ? (
                 <div className="flex h-48 items-center justify-center rounded-xl border border-zinc-800 bg-zinc-950/60 text-center text-sm text-zinc-400">
-                  还没有面试题？点击「AI 批量生成」一键生成 10 道高频题
+                  {rows.length === 0
+                    ? "还没有面试题？点击「AI 批量生成」一键生成 10 道高频题"
+                    : "当前筛选条件下没有题目，试试清空搜索或切换标签"}
                 </div>
               ) : null}
-              {rows.map((row) => (
+              {displayedRows.map((row) => (
                 <article key={row.id} className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4">
                   <div className="flex flex-wrap items-center gap-2">
                     <h3 className="text-base font-semibold text-zinc-100">{row.title}</h3>
@@ -1048,6 +1132,7 @@ export default function QuestionBankPage() {
           </div>
         </aside>
       </section>
+      )}
 
       {showManualModal ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">

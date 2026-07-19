@@ -1,5 +1,9 @@
 import { generateText } from "ai";
 import { getModel } from "@/lib/llm";
+import {
+  normalizeQuestionBankCategory,
+  questionBankCategoryListForPrompt,
+} from "@/lib/question-bank-categories";
 
 type SmartExtractTarget = "story" | "question";
 
@@ -49,7 +53,7 @@ Return JSON only:
 要求：
 1. 必须输出合法 JSON，不要输出任何解释、Markdown 或额外文字。
 2. title：输出清晰、可直接进入题库的题干。
-3. category：必须只从以下值中选择一个：Behavioral, Product Sense, Technical, Case Study, System Design, Culture Fit。
+3. category：必须只从以下值中选择一个：${questionBankCategoryListForPrompt()}。
 4. dimensions：用 2-4 个简短短语概括这道题主要考察什么，例如“冲突处理”“主人翁意识”“优先级判断”。
 5. difficulty：必须只从以下值中选择一个：简单, 中等, 困难。
 
@@ -112,15 +116,6 @@ export async function POST(req: Request) {
       });
     }
 
-    const allowedCategories = new Set([
-      "Behavioral",
-      "Product Sense",
-      "Technical",
-      "Case Study",
-      "System Design",
-      "Culture Fit",
-    ]);
-    const category = String(parsed.category ?? "").trim();
     const difficulty = String(parsed.difficulty ?? "").trim();
     const dimensions = Array.isArray(parsed.dimensions)
       ? parsed.dimensions.map((item) => String(item ?? "").trim()).filter(Boolean).slice(0, 4)
@@ -129,7 +124,7 @@ export async function POST(req: Request) {
     return Response.json({
       result: {
         title: String(parsed.title ?? "").trim(),
-        category: allowedCategories.has(category) ? category : "Behavioral",
+        category: normalizeQuestionBankCategory(parsed.category),
         dimensions,
         difficulty: difficulty === "简单" || difficulty === "中等" || difficulty === "困难" ? difficulty : "中等",
       },

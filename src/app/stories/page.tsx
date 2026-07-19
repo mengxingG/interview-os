@@ -983,17 +983,21 @@ export default function StoriesPage() {
   async function handleRandomChallenge() {
     setLoadingRandomChallenge(true);
     try {
-      const response = await fetch("/api/questions?category=Behavioral");
+      const response = await fetch("/api/questions");
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }
       const payload = (await response.json()) as { rows?: ChallengeQuestionRow[] };
+      const preferredCategories = new Set(["个人特质", "跨团队协作", "开场自我介绍", "职业规划", "岗位匹配"]);
       const candidates = Array.isArray(payload.rows)
         ? payload.rows.filter((row) => {
             const title = String(row.title ?? "").trim();
             const category = String(row.category ?? "");
             const tags = Array.isArray(row.tags) ? row.tags.map((tag) => String(tag).toLowerCase()) : [];
-            return Boolean(title) && (category === "Behavioral" || tags.includes("高频") || tags.includes("behavioral"));
+            return (
+              Boolean(title) &&
+              (preferredCategories.has(category) || tags.includes("高频") || tags.includes("behavioral"))
+            );
           })
         : [];
       const pool =

@@ -386,10 +386,10 @@ export default function DebriefPage() {
                         title: question,
                         category:
                           interviewType === "Technical"
-                            ? "Technical"
+                            ? "项目深挖"
                             : interviewType === "Case Study"
-                              ? "Case Study"
-                              : "Behavioral",
+                              ? "产品方法论"
+                              : "个人特质",
                         source: "真实面试",
                         company: company.trim(),
                         role: "AI Product Manager",
@@ -437,10 +437,10 @@ export default function DebriefPage() {
         title: question,
         category:
           interviewType === "Technical"
-            ? "Technical"
+            ? "项目深挖"
             : interviewType === "Case Study"
-              ? "Case Study"
-              : "Behavioral",
+              ? "产品方法论"
+              : "个人特质",
         source: "真实面试",
         company: company.trim(),
         role: "AI Product Manager",

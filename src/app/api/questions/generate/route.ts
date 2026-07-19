@@ -1,6 +1,10 @@
 import { generateText } from "ai";
 import { getFeatureFallbackOrder, getModel, getModelFallbackOrder, isFeatureModel, type ModelType } from "@/lib/llm";
 import { buildUserContextForPrompt } from "@/lib/user-profile";
+import {
+  normalizeQuestionBankCategory,
+  questionBankCategoryUnionForPrompt,
+} from "@/lib/question-bank-categories";
 
 function parseJsonArray(raw: string) {
   const start = raw.indexOf("[");
@@ -35,7 +39,7 @@ export async function POST(req: Request) {
 Each item schema:
 {
   "title": string,
-  "category": "Behavioral" | "Product Sense" | "Technical" | "Case Study" | "System Design" | "Culture Fit",
+  "category": ${questionBankCategoryUnionForPrompt()},
   "difficulty": "简单" | "中等" | "困难",
   "tags": string[]
 }
@@ -63,7 +67,7 @@ ${buildUserContextForPrompt()}`.trim();
     return Response.json({
       items: items.slice(0, count).map((item) => ({
         title: item.title,
-        category: item.category,
+        category: normalizeQuestionBankCategory(item.category),
         difficulty: item.difficulty,
         tags: item.tags ?? [],
       })),

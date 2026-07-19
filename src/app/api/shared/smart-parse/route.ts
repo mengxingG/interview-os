@@ -1,5 +1,9 @@
 import { generateText } from "ai";
 import { getModel } from "@/lib/llm";
+import {
+  normalizeQuestionBankCategory,
+  questionBankCategoryListForPrompt,
+} from "@/lib/question-bank-categories";
 
 type SmartParseType = "story" | "question";
 
@@ -25,7 +29,7 @@ function buildSystemPrompt(type: SmartParseType) {
 只返回合法 JSON，不要输出任何解释文本、Markdown 或代码块。`.trim();
   }
 
-  return `你是一个资深面试官。请分析用户输入的面试题文本，将其拆解为 JSON 格式。包含字段：title (提取出核心问题题干), category (从[行为面, 技术面, 系统设计, 产品Sense, 其他]中选择), company (如果文本中提到了公司名则提取，否则为空), role (如果提到了岗位则提取，否则为空), difficulty (评估难度，从[简单, 中等, 困难]中选择)。
+  return `你是一个资深面试官。请分析用户输入的面试题文本，将其拆解为 JSON 格式。包含字段：title (提取出核心问题题干), category (必须从[${questionBankCategoryListForPrompt()}]中选择一个), company (如果文本中提到了公司名则提取，否则为空), role (如果提到了岗位则提取，否则为空), difficulty (评估难度，从[简单, 中等, 困难]中选择)。
 
 只返回合法 JSON，不要输出任何解释文本、Markdown 或代码块。`.trim();
 }
@@ -50,23 +54,6 @@ function normalizeStoryTags(value: unknown) {
     .map((item) => map[String(item ?? "").trim()])
     .filter((item): item is string => Boolean(item));
   return Array.from(new Set(normalized)).slice(0, 3);
-}
-
-function normalizeCategory(value: unknown) {
-  const map: Record<string, string> = {
-    "行为面": "Behavioral",
-    "技术面": "Technical",
-    "系统设计": "System Design",
-    产品Sense: "Product Sense",
-    "产品 Sense": "Product Sense",
-    "产品感": "Product Sense",
-    "其他": "Behavioral",
-    Behavioral: "Behavioral",
-    Technical: "Technical",
-    "System Design": "System Design",
-    "Product Sense": "Product Sense",
-  };
-  return map[String(value ?? "").trim()] ?? "Behavioral";
 }
 
 function normalizeDifficulty(value: unknown) {
@@ -118,7 +105,7 @@ export async function POST(req: Request) {
     return Response.json({
       result: {
         title: String(parsed.title ?? "").trim(),
-        category: normalizeCategory(parsed.category),
+        category: normalizeQuestionBankCategory(parsed.category),
         company: String(parsed.company ?? "").trim(),
         role: String(parsed.role ?? "").trim(),
         difficulty: normalizeDifficulty(parsed.difficulty),

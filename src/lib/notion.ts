@@ -1,4 +1,5 @@
 import { Client } from "@notionhq/client";
+import { normalizeQuestionBankCategory } from "@/lib/question-bank-categories";
 
 // 初始化 Notion 客户端（v2）
 const notion = new Client({
@@ -45,6 +46,7 @@ const resumePropertyDefCache = new Map<string, Record<string, { type?: string }>
 const coachingPropertyCache = new Map<string, Set<string>>();
 const coachingPropertyDefCache = new Map<string, Record<string, { type?: string }>>();
 const questionPropertyCache = new Map<string, Set<string>>();
+const questionPropertyDefCache = new Map<string, Record<string, { type?: string }>>();
 const knowledgePropertyCache = new Map<string, Set<string>>();
 
 function ensureQuestionDbId() {
@@ -185,14 +187,39 @@ async function getQuestionPropertyNames() {
   if (questionPropertyCache.has(dbs.questionBank)) {
     return questionPropertyCache.get(dbs.questionBank)!;
   }
+  const defs = await getQuestionPropertyDefs();
+  const names = new Set(Object.keys(defs));
+  questionPropertyCache.set(dbs.questionBank, names);
+  return names;
+}
+
+async function getQuestionPropertyDefs() {
+  ensureQuestionDbId();
+  if (questionPropertyDefCache.has(dbs.questionBank)) {
+    return questionPropertyDefCache.get(dbs.questionBank)!;
+  }
   const db = await notion.databases.retrieve({ database_id: dbs.questionBank });
   const properties =
     db && typeof db === "object" && "properties" in db
-      ? (db.properties as Record<string, unknown>)
+      ? (db.properties as Record<string, { type?: string }>)
       : {};
-  const names = new Set(Object.keys(properties));
-  questionPropertyCache.set(dbs.questionBank, names);
-  return names;
+  questionPropertyDefCache.set(dbs.questionBank, properties);
+  return properties;
+}
+
+/** 按 Notion 字段真实类型写入 select / multi_select（Category 已改为 multi_select） */
+function writeSelectLikeValue(
+  defs: Record<string, { type?: string }>,
+  key: string,
+  value: string,
+): Record<string, unknown> {
+  const type = defs[key]?.type;
+  const name = String(value ?? "").trim();
+  if (!name) return {};
+  if (type === "multi_select" || key === "Category" || /categor|分类/i.test(key)) {
+    return { multi_select: [{ name }] };
+  }
+  return { select: { name } };
 }
 
 async function getKnowledgePropertyNames() {
@@ -242,7 +269,16 @@ function readTitle(properties: Record<string, unknown>, key: string) {
 function readSelect(properties: Record<string, unknown>, key: string, fallback = "") {
   const prop = asRecord(properties[key]);
   const select = asRecord(prop.select);
-  return typeof select.name === "string" ? select.name : fallback;
+  if (typeof select.name === "string" && select.name.trim()) return select.name;
+  // Category 等字段可能已改成 multi_select：取首个选项作为主分类
+  const multi = Array.isArray(prop.multi_select) ? prop.multi_select : [];
+  for (const item of multi) {
+    if (item !== null && typeof item === "object" && "name" in item) {
+      const name = String((item as { name?: unknown }).name ?? "").trim();
+      if (name) return name;
+    }
+  }
+  return fallback;
 }
 
 function readNumber(properties: Record<string, unknown>, key: string, fallback = 0) {
@@ -703,7 +739,7 @@ export async function getQuestions(filters?: {
     return {
       id: typeof record.id === "string" ? record.id : "",
       title: readTitle(properties, titleKey),
-      category: readSelect(properties, categoryKey, "Behavioral"),
+      category: normalizeQuestionBankCategory(readSelect(properties, categoryKey, "项目深挖")),
       source: readSelect(properties, sourceKey, "手动输入"),
       company: readRichText(properties, companyKey),
       role: readRichText(properties, roleKey),
@@ -735,30 +771,32 @@ export async function getQuestions(filters?: {
 export async function addQuestion(data: Omit<QuestionRow, "id">) {
   ensureQuestionDbId();
   const available = await getQuestionPropertyNames();
+  const defs = await getQuestionPropertyDefs();
   const titleKey = pickFirstExisting(["Title", "Name"], available);
   if (!titleKey) throw new Error("QuestionBank database must contain Title/Name");
-  const categoryKey = pickFirstExisting(["Category"], available);
-  const sourceKey = pickFirstExisting(["Source"], available);
-  const companyKey = pickFirstExisting(["Company"], available);
-  const roleKey = pickFirstExisting(["Role"], available);
-  const difficultyKey = pickFirstExisting(["Difficulty"], available);
+  const categoryKey = pickFirstExisting(["Category", "分类"], available);
+  const sourceKey = pickFirstExisting(["Source", "来源"], available);
+  const companyKey = pickFirstExisting(["Company", "公司"], available);
+  const roleKey = pickFirstExisting(["Role", "岗位"], available);
+  const difficultyKey = pickFirstExisting(["Difficulty", "难度"], available);
   const myAnswerKey = pickFirstExisting(["My Answer"], available);
   const aiFeedbackKey = pickFirstExisting(["AI Feedback"], available);
   const bestStoryKey = pickFirstExisting(["Best Story"], available);
-  const tagsKey = pickFirstExisting(["Tags"], available);
+  const tagsKey = pickFirstExisting(["Tags", "标签"], available);
   const practiceCountKey = pickFirstExisting(["Practice Count"], available);
   const lastScoreKey = pickFirstExisting(["Last Score"], available);
   const lastPracticedKey = pickFirstExisting(["Last Practiced"], available);
-  const statusKey = pickFirstExisting(["Status"], available);
+  const statusKey = pickFirstExisting(["Status", "状态"], available);
   const knowledgeKey = pickFirstExisting(["Knowledge"], available);
 
+  const category = normalizeQuestionBankCategory(data.category);
   const properties: Record<string, unknown> = {
     [titleKey]: { title: [{ text: { content: data.title } }] },
-    ...(categoryKey ? { [categoryKey]: { select: { name: data.category } } } : {}),
-    ...(sourceKey ? { [sourceKey]: { select: { name: data.source } } } : {}),
+    ...(categoryKey ? { [categoryKey]: writeSelectLikeValue(defs, categoryKey, category) } : {}),
+    ...(sourceKey ? { [sourceKey]: writeSelectLikeValue(defs, sourceKey, data.source) } : {}),
     ...(companyKey ? { [companyKey]: { rich_text: [{ text: { content: data.company } }] } } : {}),
     ...(roleKey ? { [roleKey]: { rich_text: [{ text: { content: data.role } }] } } : {}),
-    ...(difficultyKey ? { [difficultyKey]: { select: { name: data.difficulty } } } : {}),
+    ...(difficultyKey ? { [difficultyKey]: writeSelectLikeValue(defs, difficultyKey, data.difficulty) } : {}),
     ...(myAnswerKey ? { [myAnswerKey]: { rich_text: [{ text: { content: data.myAnswer.slice(0, 2000) } }] } } : {}),
     ...(aiFeedbackKey ? { [aiFeedbackKey]: { rich_text: [{ text: { content: data.aiFeedback.slice(0, 2000) } }] } } : {}),
     ...(bestStoryKey ? { [bestStoryKey]: { rich_text: [{ text: { content: data.bestStory } }] } } : {}),
@@ -766,7 +804,7 @@ export async function addQuestion(data: Omit<QuestionRow, "id">) {
     ...(practiceCountKey ? { [practiceCountKey]: { number: data.practiceCount } } : {}),
     ...(lastScoreKey ? { [lastScoreKey]: { number: data.lastScore } } : {}),
     ...(lastPracticedKey && data.lastPracticed ? { [lastPracticedKey]: { date: { start: data.lastPracticed } } } : {}),
-    ...(statusKey ? { [statusKey]: { select: { name: data.status } } } : {}),
+    ...(statusKey ? { [statusKey]: writeSelectLikeValue(defs, statusKey, data.status) } : {}),
     ...(knowledgeKey && Array.isArray(data.knowledge) && data.knowledge.length > 0
       ? { [knowledgeKey]: { relation: data.knowledge.map((item) => ({ id: item.id })) } }
       : {}),
@@ -784,31 +822,34 @@ export async function addQuestionsBatch(rows: Array<Omit<QuestionRow, "id">>) {
 
 export async function updateQuestion(pageId: string, data: Partial<Omit<QuestionRow, "id">>) {
   const available = await getQuestionPropertyNames();
+  const defs = await getQuestionPropertyDefs();
   const titleKey = pickFirstExisting(["Title", "Name"], available);
-  const categoryKey = pickFirstExisting(["Category"], available);
-  const sourceKey = pickFirstExisting(["Source"], available);
-  const companyKey = pickFirstExisting(["Company"], available);
-  const roleKey = pickFirstExisting(["Role"], available);
-  const difficultyKey = pickFirstExisting(["Difficulty"], available);
+  const categoryKey = pickFirstExisting(["Category", "分类"], available);
+  const sourceKey = pickFirstExisting(["Source", "来源"], available);
+  const companyKey = pickFirstExisting(["Company", "公司"], available);
+  const roleKey = pickFirstExisting(["Role", "岗位"], available);
+  const difficultyKey = pickFirstExisting(["Difficulty", "难度"], available);
   const myAnswerKey = pickFirstExisting(["My Answer"], available);
   const aiFeedbackKey = pickFirstExisting(["AI Feedback"], available);
   const bestStoryKey = pickFirstExisting(["Best Story"], available);
-  const tagsKey = pickFirstExisting(["Tags"], available);
+  const tagsKey = pickFirstExisting(["Tags", "标签"], available);
   const practiceCountKey = pickFirstExisting(["Practice Count"], available);
   const lastScoreKey = pickFirstExisting(["Last Score"], available);
   const lastPracticedKey = pickFirstExisting(["Last Practiced"], available);
-  const statusKey = pickFirstExisting(["Status"], available);
+  const statusKey = pickFirstExisting(["Status", "状态"], available);
   const knowledgeKey = pickFirstExisting(["Knowledge"], available);
 
   const properties: Record<string, unknown> = {};
   if (titleKey && typeof data.title === "string") {
     properties[titleKey] = { title: [{ text: { content: data.title } }] };
   }
-  if (data.category && categoryKey) properties[categoryKey] = { select: { name: data.category } };
-  if (data.source && sourceKey) properties[sourceKey] = { select: { name: data.source } };
+  if (data.category && categoryKey) {
+    properties[categoryKey] = writeSelectLikeValue(defs, categoryKey, normalizeQuestionBankCategory(data.category));
+  }
+  if (data.source && sourceKey) properties[sourceKey] = writeSelectLikeValue(defs, sourceKey, data.source);
   if (typeof data.company === "string" && companyKey) properties[companyKey] = { rich_text: [{ text: { content: data.company } }] };
   if (typeof data.role === "string" && roleKey) properties[roleKey] = { rich_text: [{ text: { content: data.role } }] };
-  if (data.difficulty && difficultyKey) properties[difficultyKey] = { select: { name: data.difficulty } };
+  if (data.difficulty && difficultyKey) properties[difficultyKey] = writeSelectLikeValue(defs, difficultyKey, data.difficulty);
   if (typeof data.myAnswer === "string" && myAnswerKey) properties[myAnswerKey] = { rich_text: [{ text: { content: data.myAnswer.slice(0, 2000) } }] };
   if (typeof data.aiFeedback === "string" && aiFeedbackKey) properties[aiFeedbackKey] = { rich_text: [{ text: { content: data.aiFeedback.slice(0, 2000) } }] };
   if (typeof data.bestStory === "string" && bestStoryKey) properties[bestStoryKey] = { rich_text: [{ text: { content: data.bestStory } }] };
@@ -816,7 +857,7 @@ export async function updateQuestion(pageId: string, data: Partial<Omit<Question
   if (typeof data.practiceCount === "number" && practiceCountKey) properties[practiceCountKey] = { number: data.practiceCount };
   if (typeof data.lastScore === "number" && lastScoreKey) properties[lastScoreKey] = { number: data.lastScore };
   if (typeof data.lastPracticed === "string" && lastPracticedKey) properties[lastPracticedKey] = { date: { start: data.lastPracticed } };
-  if (typeof data.status === "string" && statusKey) properties[statusKey] = { select: { name: data.status } };
+  if (typeof data.status === "string" && statusKey) properties[statusKey] = writeSelectLikeValue(defs, statusKey, data.status);
   if (Array.isArray(data.knowledge) && knowledgeKey) properties[knowledgeKey] = { relation: data.knowledge.map((item) => ({ id: item.id })) };
 
   return notion.pages.update({

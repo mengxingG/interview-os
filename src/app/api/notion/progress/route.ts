@@ -49,7 +49,15 @@ function readRichText(properties: NotionProperties, key: string) {
 function readSelect(properties: NotionProperties, key: string, fallback: string) {
   const prop = asRecord(properties[key]);
   const select = asRecord(prop.select);
-  return typeof select.name === "string" ? select.name : fallback;
+  if (typeof select.name === "string" && select.name.trim()) return select.name;
+  const multi = Array.isArray(prop.multi_select) ? prop.multi_select : [];
+  for (const item of multi) {
+    if (item !== null && typeof item === "object" && "name" in item) {
+      const name = String((item as { name?: unknown }).name ?? "").trim();
+      if (name) return name;
+    }
+  }
+  return fallback;
 }
 
 function readProperties(item: unknown) {

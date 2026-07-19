@@ -484,7 +484,7 @@ export default function PrepPage() {
               action: "create",
               item: {
                 title: question,
-                category: "Behavioral",
+                category: "个人特质",
                 source: "AI生成",
                 company: company.trim(),
                 role: role.trim(),
@@ -894,7 +894,7 @@ export default function PrepPage() {
                             body: JSON.stringify({
                               item: {
                                 title: item,
-                                category: "Behavioral",
+                                category: "个人特质",
                                 source: "AI生成",
                                 company: company.trim(),
                                 role: role.trim(),

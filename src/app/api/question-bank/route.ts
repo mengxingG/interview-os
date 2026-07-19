@@ -3,16 +3,14 @@ import { Client } from "@notionhq/client";
 import { getFeatureFallbackOrder, getModel, getModelFallbackOrder, isFeatureModel, type ModelType } from "@/lib/llm";
 import { buildUserContextForPrompt } from "@/lib/user-profile";
 import type { NotionRelationRef, QuestionBankNotionRow } from "@/types/notion";
+import {
+  DEFAULT_QUESTION_BANK_CATEGORY,
+  normalizeQuestionBankCategory,
+  questionBankCategoryUnionForPrompt,
+  type QuestionBankCategory,
+} from "@/lib/question-bank-categories";
 
 type NotionProperties = Record<string, unknown>;
-
-type QuestionBankCategory =
-  | "Behavioral"
-  | "Product Sense"
-  | "Technical"
-  | "Case Study"
-  | "System Design"
-  | "Culture Fit";
 
 type Difficulty = "简单" | "中等" | "困难";
 type QuestionStatus = "未练习" | "已练习" | "已掌握" | "需加强";
@@ -78,7 +76,15 @@ function readTitle(properties: NotionProperties, key = "Title") {
 function readSelect(properties: NotionProperties, key: string, fallback = "") {
   const prop = asRecord(properties[key]);
   const select = asRecord(prop.select);
-  return typeof select.name === "string" ? select.name : fallback;
+  if (typeof select.name === "string" && select.name.trim()) return select.name;
+  const multi = Array.isArray(prop.multi_select) ? prop.multi_select : [];
+  for (const entry of multi) {
+    if (entry !== null && typeof entry === "object" && "name" in entry) {
+      const name = String((entry as { name?: unknown }).name ?? "").trim();
+      if (name) return name;
+    }
+  }
+  return fallback;
 }
 
 function readMultiSelect(properties: NotionProperties, key: string) {
@@ -117,12 +123,29 @@ function readRelation(properties: NotionProperties, key: string) {
 }
 
 async function getPropertyNames(databaseId: string) {
+  const defs = await getPropertyDefs(databaseId);
+  return new Set(Object.keys(defs));
+}
+
+async function getPropertyDefs(databaseId: string) {
   const db = await notion.databases.retrieve({ database_id: databaseId });
-  const props =
-    db && typeof db === "object" && "properties" in db
-      ? (db.properties as Record<string, unknown>)
-      : {};
-  return new Set(Object.keys(props));
+  return db && typeof db === "object" && "properties" in db
+    ? (db.properties as Record<string, { type?: string }>)
+    : {};
+}
+
+function writeSelectLikeValue(
+  defs: Record<string, { type?: string }>,
+  key: string,
+  value: string,
+): Record<string, unknown> {
+  const type = defs[key]?.type;
+  const name = String(value ?? "").trim();
+  if (!name) return {};
+  if (type === "multi_select" || key === "Category" || /categor|分类/i.test(key)) {
+    return { multi_select: [{ name }] };
+  }
+  return { select: { name } };
 }
 
 function parseJson(raw: string) {
@@ -162,7 +185,7 @@ async function toQuestionBankRow(item: unknown): Promise<QuestionBankRow> {
   return {
       id: typeof record.id === "string" ? record.id : "",
     title: readTitle(properties, titleKey),
-    category: readSelect(properties, categoryKey, "Behavioral") as QuestionBankCategory,
+    category: normalizeQuestionBankCategory(readSelect(properties, categoryKey, DEFAULT_QUESTION_BANK_CATEGORY)),
     source: readSelect(properties, sourceKey, "手动输入"),
     company: readRichText(properties, companyKey),
     role: readRichText(properties, roleKey),
@@ -184,32 +207,34 @@ async function createQuestionInNotion(data: Omit<QuestionBankRow, "id" | "knowle
     throw new Error("Question DB env missing: set NOTION_QUESTION_DB (legacy: NOTION_QUESTIONS_DB/NOTION_QUESTION_BANK_DB)");
   }
   const available = await getPropertyNames(questionBankDb);
+  const defs = await getPropertyDefs(questionBankDb);
   const titleKey = pickFirstExisting(["Title", "Name"], available);
   if (!titleKey) throw new Error("QuestionBank database must contain Title or Name");
 
-  const categoryKey = pickFirstExisting(["Category"], available);
-  const sourceKey = pickFirstExisting(["Source"], available);
-  const companyKey = pickFirstExisting(["Company"], available);
-  const roleKey = pickFirstExisting(["Role"], available);
-  const difficultyKey = pickFirstExisting(["Difficulty"], available);
+  const categoryKey = pickFirstExisting(["Category", "分类"], available);
+  const sourceKey = pickFirstExisting(["Source", "来源"], available);
+  const companyKey = pickFirstExisting(["Company", "公司"], available);
+  const roleKey = pickFirstExisting(["Role", "岗位"], available);
+  const difficultyKey = pickFirstExisting(["Difficulty", "难度"], available);
   const myAnswerKey = pickFirstExisting(["My Answer"], available);
   const aiFeedbackKey = pickFirstExisting(["AI Feedback"], available);
   const bestStoryKey = pickFirstExisting(["Best Story"], available);
-  const tagsKey = pickFirstExisting(["Tags"], available);
+  const tagsKey = pickFirstExisting(["Tags", "标签"], available);
   const practiceCountKey = pickFirstExisting(["Practice Count"], available);
   const lastScoreKey = pickFirstExisting(["Last Score"], available);
   const lastPracticedKey = pickFirstExisting(["Last Practiced"], available);
-  const statusKey = pickFirstExisting(["Status"], available);
+  const statusKey = pickFirstExisting(["Status", "状态"], available);
   const knowledgeKey = pickFirstExisting(["Knowledge"], available);
 
+  const category = normalizeQuestionBankCategory(data.category);
   const props: Record<string, unknown> = {
     [titleKey]: { title: [{ text: { content: data.title } }] },
   };
-  if (categoryKey) props[categoryKey] = { select: { name: data.category } };
-  if (sourceKey) props[sourceKey] = { select: { name: data.source } };
+  if (categoryKey) Object.assign(props, { [categoryKey]: writeSelectLikeValue(defs, categoryKey, category) });
+  if (sourceKey) Object.assign(props, { [sourceKey]: writeSelectLikeValue(defs, sourceKey, data.source) });
   if (companyKey) props[companyKey] = { rich_text: [{ text: { content: data.company } }] };
   if (roleKey) props[roleKey] = { rich_text: [{ text: { content: data.role } }] };
-  if (difficultyKey) props[difficultyKey] = { select: { name: data.difficulty } };
+  if (difficultyKey) Object.assign(props, { [difficultyKey]: writeSelectLikeValue(defs, difficultyKey, data.difficulty) });
   if (myAnswerKey) props[myAnswerKey] = { rich_text: [{ text: { content: data.myAnswer.substring(0, 2000) } }] };
   if (aiFeedbackKey) props[aiFeedbackKey] = { rich_text: [{ text: { content: data.aiFeedback.substring(0, 2000) } }] };
   if (bestStoryKey) props[bestStoryKey] = { rich_text: [{ text: { content: data.bestStory } }] };
@@ -217,7 +242,7 @@ async function createQuestionInNotion(data: Omit<QuestionBankRow, "id" | "knowle
   if (practiceCountKey) props[practiceCountKey] = { number: data.practiceCount };
   if (lastScoreKey) props[lastScoreKey] = { number: data.lastScore };
   if (lastPracticedKey && data.lastPracticed) props[lastPracticedKey] = { date: { start: data.lastPracticed } };
-  if (statusKey) props[statusKey] = { select: { name: data.status } };
+  if (statusKey) Object.assign(props, { [statusKey]: writeSelectLikeValue(defs, statusKey, data.status) });
   if (knowledgeKey && Array.isArray(data.knowledge) && data.knowledge.length > 0) {
     props[knowledgeKey] = { relation: data.knowledge.map((item) => ({ id: item.id })) };
   }
@@ -311,7 +336,7 @@ async function importFromInterviewRecords() {
       for (const q of questions.slice(0, 10)) {
         await createQuestionInNotion({
           title: q,
-          category: "Behavioral",
+          category: DEFAULT_QUESTION_BANK_CATEGORY,
           source: "真实面试",
           company: readRichText(properties, companyKey) || readTitle(properties, titleKey),
           role: readSelect(properties, typeKey, ""),
@@ -373,7 +398,7 @@ export async function POST(req: Request) {
 You are an interview question generator.
 Generate exactly 10 high-frequency interview questions and return JSON array only:
 [
-  { "title": string, "category": "Behavioral" | "Product Sense" | "Technical" | "Case Study" | "System Design" | "Culture Fit", "difficulty": "简单" | "中等" | "困难", "tags": string[] }
+  { "title": string, "category": ${questionBankCategoryUnionForPrompt()}, "difficulty": "简单" | "中等" | "困难", "tags": string[] }
 ]
 `.trim();
       const prompt = `
@@ -405,7 +430,7 @@ ${buildUserContextForPrompt()}
       for (const item of generated.slice(0, 10)) {
         await createQuestionInNotion({
           title: item.title,
-          category: item.category,
+          category: normalizeQuestionBankCategory(item.category),
           source: "AI生成",
           company: body.company,
           role: body.role,

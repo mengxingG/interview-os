@@ -1,6 +1,7 @@
 import { generateText } from "ai";
 import { getModel } from "@/lib/llm";
 import { addQuestionsBatch, getInterviewRecords, type QuestionRow } from "@/lib/notion";
+import { DEFAULT_QUESTION_BANK_CATEGORY } from "@/lib/question-bank-categories";
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === "object" ? (value as Record<string, unknown>) : {};
@@ -86,7 +87,7 @@ export async function POST(req: Request) {
       for (const q of questions.slice(0, 5)) {
         output.push({
           title: q,
-          category: "Behavioral",
+          category: DEFAULT_QUESTION_BANK_CATEGORY,
           source: "真实面试",
           company,
           role,

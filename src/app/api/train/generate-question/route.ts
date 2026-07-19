@@ -2,6 +2,11 @@ import { generateText } from "ai";
 import { addQuestion } from "@/lib/notion";
 import { getFeatureFallbackOrder, getModel, getModelFallbackOrder, isFeatureModel, type ModelType } from "@/lib/llm";
 import { buildUserContextForPrompt } from "@/lib/user-profile";
+import {
+  DEFAULT_QUESTION_BANK_CATEGORY,
+  normalizeQuestionBankCategory,
+  questionBankCategoryUnionForPrompt,
+} from "@/lib/question-bank-categories";
 
 function parseJson(raw: string) {
   const start = raw.indexOf("{");
@@ -30,7 +35,7 @@ export async function POST(req: Request) {
     const system = `你是面试教练。基于知识点生成 1 道实战面试题，返回 JSON：
 {
   "question": string,
-  "category": "Behavioral" | "Product Sense" | "Technical" | "Case Study" | "System Design" | "Culture Fit",
+  "category": ${questionBankCategoryUnionForPrompt()},
   "difficulty": "简单" | "中等" | "困难",
   "tags": string[]
 }
@@ -56,7 +61,7 @@ ${body.content}`.trim();
 
     const parsed = parseJson(text) as {
       question?: string;
-      category?: "Behavioral" | "Product Sense" | "Technical" | "Case Study" | "System Design" | "Culture Fit";
+      category?: string;
       difficulty?: "简单" | "中等" | "困难";
       tags?: string[];
     };
@@ -68,7 +73,7 @@ ${body.content}`.trim();
 
     const created = await addQuestion({
       title: questionTitle,
-      category: parsed.category ?? "Technical",
+      category: normalizeQuestionBankCategory(parsed.category ?? DEFAULT_QUESTION_BANK_CATEGORY),
       source: "知识实战",
       company: "",
       role: "",
