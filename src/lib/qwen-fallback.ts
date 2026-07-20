@@ -117,8 +117,26 @@ export function shouldRetryWithNextQwenModel(error: unknown): boolean {
   return false;
 }
 
-type GenerateTextInput = Omit<Parameters<typeof generateText>[0], "model">;
-type StreamTextInput = Omit<Parameters<typeof streamText>[0], "model">;
+type GenerateTextParams = Parameters<typeof generateText>[0];
+type StreamTextParams = Parameters<typeof streamText>[0];
+type GenerateTextInput = Omit<GenerateTextParams, "model">;
+type StreamTextInput = Omit<StreamTextParams, "model">;
+
+function toGenerateTextParams(model: LanguageModel, params: GenerateTextInput): GenerateTextParams {
+  return {
+    maxOutputTokens: QWEN_MAX_OUTPUT_TOKENS,
+    ...params,
+    model,
+  } as GenerateTextParams;
+}
+
+function toStreamTextParams(model: LanguageModel, params: StreamTextInput): StreamTextParams {
+  return {
+    maxOutputTokens: QWEN_MAX_OUTPUT_TOKENS,
+    ...params,
+    model,
+  } as StreamTextParams;
+}
 
 /** 依次尝试各 Qwen 免费模型，额度报错时自动切换，对用户无感 */
 export async function generateTextWithQwenFallback(params: GenerateTextInput) {
@@ -127,11 +145,7 @@ export async function generateTextWithQwenFallback(params: GenerateTextInput) {
 
   for (const modelId of modelIds) {
     try {
-      const result = await generateText({
-        maxOutputTokens: QWEN_MAX_OUTPUT_TOKENS,
-        ...params,
-        model: getQwenChatModel(modelId),
-      });
+      const result = await generateText(toGenerateTextParams(getQwenChatModel(modelId), params));
       markQwenModelSuccess(modelId);
       return result;
     } catch (error) {
@@ -153,11 +167,7 @@ export function streamTextWithQwenFallback(params: StreamTextInput) {
 
   for (const modelId of modelIds) {
     try {
-      const result = streamText({
-        maxOutputTokens: QWEN_MAX_OUTPUT_TOKENS,
-        ...params,
-        model: getQwenChatModel(modelId),
-      });
+      const result = streamText(toStreamTextParams(getQwenChatModel(modelId), params));
       markQwenModelSuccess(modelId);
       return result;
     } catch (error) {
