@@ -171,6 +171,11 @@ async function toQuestionBankRow(item: unknown): Promise<QuestionBankRow> {
   const sourceKey = Object.keys(properties).find((k) => k.toLowerCase().includes("source")) ?? "Source";
   const companyKey = Object.keys(properties).find((k) => k.toLowerCase().includes("company")) ?? "Company";
   const roleKey = Object.keys(properties).find((k) => k.toLowerCase().includes("role")) ?? "Role";
+  const roundKey =
+    Object.keys(properties).find((key) => {
+      const lower = key.toLowerCase();
+      return lower === "round" || lower.includes("轮次") || lower === "面试轮次";
+    }) ?? "";
   const difficultyKey = Object.keys(properties).find((k) => k.toLowerCase().includes("difficulty")) ?? "Difficulty";
   const myAnswerKey = Object.keys(properties).find((k) => k.toLowerCase().includes("my answer")) ?? "My Answer";
   const aiFeedbackKey = Object.keys(properties).find((k) => k.toLowerCase().includes("ai feedback")) ?? "AI Feedback";
@@ -182,6 +187,10 @@ async function toQuestionBankRow(item: unknown): Promise<QuestionBankRow> {
   const statusKey = Object.keys(properties).find((k) => k.toLowerCase().includes("status")) ?? "Status";
   const knowledgeKey = Object.keys(properties).find((k) => k.toLowerCase().includes("knowledge")) ?? "Knowledge";
 
+  const roundRaw = roundKey
+    ? readSelect(properties, roundKey, "") || readRichText(properties, roundKey)
+    : "";
+
   return {
       id: typeof record.id === "string" ? record.id : "",
     title: readTitle(properties, titleKey),
@@ -189,6 +198,7 @@ async function toQuestionBankRow(item: unknown): Promise<QuestionBankRow> {
     source: readSelect(properties, sourceKey, "手动输入"),
     company: readRichText(properties, companyKey),
     role: readRichText(properties, roleKey),
+    round: roundRaw.trim(),
     difficulty: readSelect(properties, difficultyKey, "中等") as Difficulty,
     myAnswer: readRichText(properties, myAnswerKey),
     aiFeedback: readRichText(properties, aiFeedbackKey),
@@ -215,6 +225,7 @@ async function createQuestionInNotion(data: Omit<QuestionBankRow, "id" | "knowle
   const sourceKey = pickFirstExisting(["Source", "来源"], available);
   const companyKey = pickFirstExisting(["Company", "公司"], available);
   const roleKey = pickFirstExisting(["Role", "岗位"], available);
+  const roundKey = pickFirstExisting(["Round", "轮次", "面试轮次"], available);
   const difficultyKey = pickFirstExisting(["Difficulty", "难度"], available);
   const myAnswerKey = pickFirstExisting(["My Answer"], available);
   const aiFeedbackKey = pickFirstExisting(["AI Feedback"], available);
@@ -234,6 +245,12 @@ async function createQuestionInNotion(data: Omit<QuestionBankRow, "id" | "knowle
   if (sourceKey) Object.assign(props, { [sourceKey]: writeSelectLikeValue(defs, sourceKey, data.source) });
   if (companyKey) props[companyKey] = { rich_text: [{ text: { content: data.company } }] };
   if (roleKey) props[roleKey] = { rich_text: [{ text: { content: data.role } }] };
+  if (roundKey && data.round?.trim()) {
+    props[roundKey] =
+      defs[roundKey]?.type === "rich_text"
+        ? { rich_text: [{ text: { content: data.round.trim() } }] }
+        : writeSelectLikeValue(defs, roundKey, data.round.trim());
+  }
   if (difficultyKey) Object.assign(props, { [difficultyKey]: writeSelectLikeValue(defs, difficultyKey, data.difficulty) });
   if (myAnswerKey) props[myAnswerKey] = { rich_text: [{ text: { content: data.myAnswer.substring(0, 2000) } }] };
   if (aiFeedbackKey) props[aiFeedbackKey] = { rich_text: [{ text: { content: data.aiFeedback.substring(0, 2000) } }] };
@@ -340,6 +357,7 @@ async function importFromInterviewRecords() {
           source: "真实面试",
           company: readRichText(properties, companyKey) || readTitle(properties, titleKey),
           role: readSelect(properties, typeKey, ""),
+          round: "",
           difficulty: "中等",
           myAnswer: "",
           aiFeedback: "",
@@ -434,6 +452,7 @@ ${buildUserContextForPrompt()}
           source: "AI生成",
           company: body.company,
           role: body.role,
+          round: "",
           difficulty: item.difficulty,
           myAnswer: "",
           aiFeedback: "",

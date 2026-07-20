@@ -23,6 +23,7 @@ export type QuestionBankNotionRow = {
   source: string;
   company: string;
   role: string;
+  round: string;
   difficulty: string;
   myAnswer: string;
   aiFeedback: string;

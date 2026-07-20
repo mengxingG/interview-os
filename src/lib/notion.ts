@@ -676,6 +676,8 @@ export type QuestionRow = {
   source: string;
   company: string;
   role: string;
+  /** Notion Round/轮次；无该字段时为空，按公司看会归入未标注轮次 */
+  round: string;
   difficulty: string;
   myAnswer: string;
   aiFeedback: string;
@@ -725,6 +727,11 @@ export async function getQuestions(filters?: {
     const sourceKey = Object.keys(properties).find((key) => key.toLowerCase().includes("source")) ?? "Source";
     const companyKey = Object.keys(properties).find((key) => key.toLowerCase().includes("company")) ?? "Company";
     const roleKey = Object.keys(properties).find((key) => key.toLowerCase().includes("role")) ?? "Role";
+    const roundKey =
+      Object.keys(properties).find((key) => {
+        const lower = key.toLowerCase();
+        return lower === "round" || lower.includes("轮次") || lower === "面试轮次";
+      }) ?? "";
     const difficultyKey = Object.keys(properties).find((key) => key.toLowerCase().includes("difficulty")) ?? "Difficulty";
     const myAnswerKey = Object.keys(properties).find((key) => key.toLowerCase().includes("my answer")) ?? "My Answer";
     const aiFeedbackKey = Object.keys(properties).find((key) => key.toLowerCase().includes("ai feedback")) ?? "AI Feedback";
@@ -736,6 +743,10 @@ export async function getQuestions(filters?: {
     const statusKey = Object.keys(properties).find((key) => key.toLowerCase().includes("status")) ?? "Status";
     const knowledgeKey = Object.keys(properties).find((key) => key.toLowerCase().includes("knowledge")) ?? "Knowledge";
 
+    const roundRaw = roundKey
+      ? readSelect(properties, roundKey, "") || readRichText(properties, roundKey)
+      : "";
+
     return {
       id: typeof record.id === "string" ? record.id : "",
       title: readTitle(properties, titleKey),
@@ -743,6 +754,7 @@ export async function getQuestions(filters?: {
       source: readSelect(properties, sourceKey, "手动输入"),
       company: readRichText(properties, companyKey),
       role: readRichText(properties, roleKey),
+      round: roundRaw.trim(),
       difficulty: readSelect(properties, difficultyKey, "中等"),
       myAnswer: readRichText(properties, myAnswerKey),
       aiFeedback: readRichText(properties, aiFeedbackKey),
@@ -778,6 +790,7 @@ export async function addQuestion(data: Omit<QuestionRow, "id">) {
   const sourceKey = pickFirstExisting(["Source", "来源"], available);
   const companyKey = pickFirstExisting(["Company", "公司"], available);
   const roleKey = pickFirstExisting(["Role", "岗位"], available);
+  const roundKey = pickFirstExisting(["Round", "轮次", "面试轮次"], available);
   const difficultyKey = pickFirstExisting(["Difficulty", "难度"], available);
   const myAnswerKey = pickFirstExisting(["My Answer"], available);
   const aiFeedbackKey = pickFirstExisting(["AI Feedback"], available);
@@ -796,6 +809,14 @@ export async function addQuestion(data: Omit<QuestionRow, "id">) {
     ...(sourceKey ? { [sourceKey]: writeSelectLikeValue(defs, sourceKey, data.source) } : {}),
     ...(companyKey ? { [companyKey]: { rich_text: [{ text: { content: data.company } }] } } : {}),
     ...(roleKey ? { [roleKey]: { rich_text: [{ text: { content: data.role } }] } } : {}),
+    ...(roundKey && data.round?.trim()
+      ? {
+          [roundKey]:
+            defs[roundKey]?.type === "rich_text"
+              ? { rich_text: [{ text: { content: data.round.trim() } }] }
+              : writeSelectLikeValue(defs, roundKey, data.round.trim()),
+        }
+      : {}),
     ...(difficultyKey ? { [difficultyKey]: writeSelectLikeValue(defs, difficultyKey, data.difficulty) } : {}),
     ...(myAnswerKey ? { [myAnswerKey]: { rich_text: [{ text: { content: data.myAnswer.slice(0, 2000) } }] } } : {}),
     ...(aiFeedbackKey ? { [aiFeedbackKey]: { rich_text: [{ text: { content: data.aiFeedback.slice(0, 2000) } }] } } : {}),
@@ -828,6 +849,7 @@ export async function updateQuestion(pageId: string, data: Partial<Omit<Question
   const sourceKey = pickFirstExisting(["Source", "来源"], available);
   const companyKey = pickFirstExisting(["Company", "公司"], available);
   const roleKey = pickFirstExisting(["Role", "岗位"], available);
+  const roundKey = pickFirstExisting(["Round", "轮次", "面试轮次"], available);
   const difficultyKey = pickFirstExisting(["Difficulty", "难度"], available);
   const myAnswerKey = pickFirstExisting(["My Answer"], available);
   const aiFeedbackKey = pickFirstExisting(["AI Feedback"], available);
@@ -849,6 +871,12 @@ export async function updateQuestion(pageId: string, data: Partial<Omit<Question
   if (data.source && sourceKey) properties[sourceKey] = writeSelectLikeValue(defs, sourceKey, data.source);
   if (typeof data.company === "string" && companyKey) properties[companyKey] = { rich_text: [{ text: { content: data.company } }] };
   if (typeof data.role === "string" && roleKey) properties[roleKey] = { rich_text: [{ text: { content: data.role } }] };
+  if (typeof data.round === "string" && roundKey && data.round.trim()) {
+    properties[roundKey] =
+      defs[roundKey]?.type === "rich_text"
+        ? { rich_text: [{ text: { content: data.round.trim() } }] }
+        : writeSelectLikeValue(defs, roundKey, data.round.trim());
+  }
   if (data.difficulty && difficultyKey) properties[difficultyKey] = writeSelectLikeValue(defs, difficultyKey, data.difficulty);
   if (typeof data.myAnswer === "string" && myAnswerKey) properties[myAnswerKey] = { rich_text: [{ text: { content: data.myAnswer.slice(0, 2000) } }] };
   if (typeof data.aiFeedback === "string" && aiFeedbackKey) properties[aiFeedbackKey] = { rich_text: [{ text: { content: data.aiFeedback.slice(0, 2000) } }] };

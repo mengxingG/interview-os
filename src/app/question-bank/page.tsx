@@ -7,7 +7,13 @@ import { ModelSelect } from "@/components/ModelSelect";
 import { UpcomingInterviewFocus } from "@/components/UpcomingInterviewFocus";
 import VoiceInputButton from "@/components/VoiceInputButton";
 import { QuestionBankGlossary } from "@/components/QuestionBankGlossary";
+import { QuestionBankByCompany } from "@/components/QuestionBankByCompany";
 import { readModelSelection, writeModelSelection } from "@/lib/model-selection";
+import {
+  readQuestionBankManualDefaults,
+  writeQuestionBankManualDefaults,
+} from "@/lib/question-bank-form-defaults";
+import { persistTab, readInitialTab } from "@/lib/tab-state";
 import type { ModelType } from "@/lib/llm";
 import { getUpcomingInterview, readInterviewSchedule } from "@/lib/interview-schedule";
 import {
@@ -36,6 +42,7 @@ type QuestionBankRow = {
   source: string;
   company: string;
   role: string;
+  round: string;
   difficulty: Difficulty;
   myAnswer: string;
   aiFeedback: string;
@@ -64,7 +71,104 @@ function renderCategoryLabel(category: string) {
 const sources = ["其他", "手动输入", "牛客网", "模拟面试", "小红书", "真实面试", "AI生成"];
 const difficulties: Array<Difficulty> = ["简单", "中等", "困难"];
 const statuses: Array<QuestionStatus> = ["未练习", "已练习", "已掌握", "需加强"];
+const DEFAULT_ROUND_SUGGESTIONS = [
+  "一面 · 业务面",
+  "二面 · 业务面",
+  "三面 · 终面",
+  "HR面",
+  "CEO面",
+  "交叉面",
+];
+const MAIN_TABS = ["questions", "by-company", "glossary"] as const;
+type MainTab = (typeof MAIN_TABS)[number];
+const MAIN_TAB_STORAGE_KEY = "question-bank:main-tab";
+const RESUME_BASE_STORAGE_KEY = "question-bank:resume-base-id";
 const DASHBOARD_PRACTICE_START_KEY = "dashboard-practice-started";
+
+function resolveMainTabFromQuery(tab: string | null): MainTab | null {
+  if (tab === "glossary") return "glossary";
+  if (tab === "company" || tab === "by-company") return "by-company";
+  if (tab === "questions") return "questions";
+  return null;
+}
+
+function readInitialMainTab(): MainTab {
+  if (typeof window === "undefined") return "questions";
+  const params = new URLSearchParams(window.location.search);
+  const fromQuery = resolveMainTabFromQuery(params.get("tab"));
+  if (fromQuery) return fromQuery;
+  return readInitialTab({
+    queryParam: null,
+    validTabs: MAIN_TABS,
+    storageKey: MAIN_TAB_STORAGE_KEY,
+    fallback: "questions",
+  });
+}
+
+function persistManualFormDefaults(form: Omit<QuestionBankRow, "id">) {
+  writeQuestionBankManualDefaults({
+    category: form.category,
+    source: form.source,
+    company: form.company,
+    role: form.role,
+    round: form.round.trim(),
+    difficulty: form.difficulty,
+    status: form.status,
+  });
+}
+
+function RoundSuggestInput({
+  value,
+  onChange,
+  suggestions,
+  placeholder,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  suggestions: string[];
+  placeholder?: string;
+}) {
+  const [open, setOpen] = useState(false);
+
+  const filtered = useMemo(() => {
+    const q = value.trim().toLowerCase();
+    if (!q) return suggestions;
+    return suggestions.filter((item) => item.toLowerCase().includes(q));
+  }, [value, suggestions]);
+
+  return (
+    <div className="mt-1">
+      <input
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        onFocus={() => setOpen(true)}
+        onBlur={() => window.setTimeout(() => setOpen(false), 120)}
+        placeholder={placeholder}
+        autoComplete="off"
+        className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+      />
+      {open && filtered.length > 0 ? (
+        <ul className="mt-1 max-h-48 overflow-auto rounded-lg border border-zinc-600 bg-zinc-900 py-1 shadow-lg">
+          {filtered.map((item) => (
+            <li key={item}>
+              <button
+                type="button"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => {
+                  onChange(item);
+                  setOpen(false);
+                }}
+                className="w-full px-3 py-2 text-left text-sm text-zinc-200 transition hover:bg-zinc-800"
+              >
+                {item}
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
 
 const defaultDraft: Omit<QuestionBankRow, "id"> = {
   title: "",
@@ -72,6 +176,7 @@ const defaultDraft: Omit<QuestionBankRow, "id"> = {
   source: "手动输入",
   company: "",
   role: "",
+  round: "",
   difficulty: "中等",
   myAnswer: "",
   aiFeedback: "",
@@ -84,6 +189,33 @@ const defaultDraft: Omit<QuestionBankRow, "id"> = {
   knowledge: [],
 };
 
+function buildNewQuestionDraft(): Omit<QuestionBankRow, "id"> {
+  const saved = readQuestionBankManualDefaults();
+  const category = saved.category
+    ? isQuestionBankCategory(saved.category)
+      ? saved.category
+      : normalizeQuestionBankCategory(saved.category)
+    : defaultDraft.category;
+  const source = saved.source && sources.includes(saved.source) ? saved.source : defaultDraft.source;
+  const difficulty =
+    saved.difficulty === "简单" || saved.difficulty === "中等" || saved.difficulty === "困难"
+      ? saved.difficulty
+      : defaultDraft.difficulty;
+  const status = statuses.includes(saved.status as QuestionStatus)
+    ? (saved.status as QuestionStatus)
+    : defaultDraft.status;
+  return {
+    ...defaultDraft,
+    category,
+    source,
+    company: saved.company ?? "",
+    role: saved.role ?? "",
+    round: saved.round ?? "",
+    difficulty,
+    status,
+  };
+}
+
 export default function QuestionBankPage() {
   const [rows, setRows] = useState<QuestionBankRow[]>([]);
   const [knowledgeTitleMap, setKnowledgeTitleMap] = useState<Record<string, string>>({});
@@ -91,7 +223,7 @@ export default function QuestionBankPage() {
   const [statusText, setStatusText] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showManualModal, setShowManualModal] = useState(false);
-  const [draft, setDraft] = useState(defaultDraft);
+  const [draft, setDraft] = useState(() => buildNewQuestionDraft());
   const [currentEditingId, setCurrentEditingId] = useState<string | null>(null);
   const [showSmartPasteModal, setShowSmartPasteModal] = useState(false);
   const [smartPasteInput, setSmartPasteInput] = useState("");
@@ -120,9 +252,10 @@ export default function QuestionBankPage() {
   const [selectedResumeBaseId, setSelectedResumeBaseId] = useState("");
   const [loadingResumeBases, setLoadingResumeBases] = useState(false);
   const [moduleOpen, setModuleOpen] = useState(true);
-  const [mainTab, setMainTab] = useState<"questions" | "glossary">("questions");
+  const [mainTab, setMainTab] = useState<MainTab>(readInitialMainTab);
   const [query, setQuery] = useState("");
   const [companyFilter, setCompanyFilter] = useState("all");
+  const [focusCompany, setFocusCompany] = useState("");
   const [tagFilter, setTagFilter] = useState("all");
   const [listSort, setListSort] = useState<"frequency" | "category">("frequency");
   const [snapshotNowMs] = useState(() => Date.now());
@@ -138,21 +271,48 @@ export default function QuestionBankPage() {
   useEffect(() => {
     writeModelSelection("question-bank-practice", practiceModelType);
   }, [practiceModelType]);
+
+  function switchMainTab(next: MainTab) {
+    setMainTab(next);
+    persistTab({
+      next,
+      storageKey: MAIN_TAB_STORAGE_KEY,
+      clearQueryWhen: "questions",
+      queryParamName: "tab",
+    });
+  }
+
+  useEffect(() => {
+    if (!showManualModal || currentEditingId) return;
+    persistManualFormDefaults(draft);
+  }, [
+    showManualModal,
+    currentEditingId,
+    draft.category,
+    draft.source,
+    draft.company,
+    draft.role,
+    draft.round,
+    draft.difficulty,
+    draft.status,
+  ]);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
-    if (params.get("tab") === "glossary") {
-      setMainTab("glossary");
-    }
+    const fromQuery = resolveMainTabFromQuery(params.get("tab"));
+    if (fromQuery) setMainTab(fromQuery);
     const company = (params.get("company") || "").trim();
     if (company) {
       setCompanyFilter(company);
+      setFocusCompany(company);
       setStatusText(`已按公司聚焦：${company}`);
       return;
     }
     const upcoming = getUpcomingInterview(readInterviewSchedule());
     if (upcoming?.company) {
       setCompanyFilter(upcoming.company);
+      setFocusCompany(upcoming.company);
       setStatusText(`已按最近面试公司聚焦：${upcoming.company}`);
     }
   }, []);
@@ -170,8 +330,15 @@ export default function QuestionBankPage() {
       if (!response.ok) throw new Error(payload.error ?? "加载简历底本失败");
       const records = Array.isArray(payload.records) ? payload.records : [];
       setResumeBaseOptions(records);
+      let preferredId = "";
+      try {
+        preferredId = window.localStorage.getItem(RESUME_BASE_STORAGE_KEY) ?? "";
+      } catch {
+        preferredId = "";
+      }
       const activeId = records.find((item) => item.isActive)?.id ?? records[0]?.id ?? "";
-      setSelectedResumeBaseId((prev) => prev || activeId);
+      const resolvedId = records.some((item) => item.id === preferredId) ? preferredId : activeId;
+      setSelectedResumeBaseId((prev) => prev || resolvedId);
       if (records.length === 0) {
         setPracticeStatus("未找到简历底本，请先到「简历底本管理」创建。");
       }
@@ -201,7 +368,7 @@ export default function QuestionBankPage() {
       const queryParams = new URLSearchParams({
         category: "all",
         source: "all",
-        company: companyFilter,
+        company: "all",
         status: "all",
         q: "",
         tags: "",
@@ -246,7 +413,7 @@ export default function QuestionBankPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadRows();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [companyFilter]);
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -294,6 +461,7 @@ export default function QuestionBankPage() {
               source: draft.source,
               company: draft.company,
               role: draft.role,
+              round: draft.round.trim(),
               difficulty: draft.difficulty,
               status: draft.status,
             },
@@ -313,9 +481,10 @@ export default function QuestionBankPage() {
         setStatusText("题目已添加到题库。");
       }
 
+      persistManualFormDefaults(draft);
       setShowManualModal(false);
       setCurrentEditingId(null);
-      setDraft(defaultDraft);
+      setDraft(buildNewQuestionDraft());
       await loadRows();
     } catch (error) {
       setStatusText(error instanceof Error ? error.message : currentEditingId ? "更新题目失败。" : "添加题目失败。");
@@ -434,6 +603,7 @@ export default function QuestionBankPage() {
             source: "AI生成",
             company: batchCompany.trim(),
             role: batchRole.trim(),
+            round: "",
             difficulty: item.difficulty,
             myAnswer: "",
             aiFeedback: "",
@@ -508,6 +678,7 @@ export default function QuestionBankPage() {
           category: selectedQuestion.category,
           company: selectedQuestion.company,
           role: selectedQuestion.role,
+          round: selectedQuestion.round,
           difficulty: selectedQuestion.difficulty,
           modelType: practiceModelType,
           resumeBaseId: selectedResumeBaseId || undefined,
@@ -669,6 +840,7 @@ export default function QuestionBankPage() {
   const displayedRows = useMemo(() => {
     const q = query.trim().toLowerCase();
     let list = rows.filter((row) => {
+      if (companyFilter !== "all" && row.company !== companyFilter) return false;
       if (tagFilter !== "all") {
         const inTags = row.tags.includes(tagFilter);
         const inCategory = renderCategoryLabel(row.category) === tagFilter;
@@ -690,7 +862,16 @@ export default function QuestionBankPage() {
       );
     }
     return list;
-  }, [rows, query, tagFilter, listSort]);
+  }, [rows, query, tagFilter, listSort, companyFilter]);
+
+  const roundSuggestions = useMemo(() => {
+    const set = new Set(DEFAULT_ROUND_SUGGESTIONS);
+    for (const row of rows) {
+      const round = row.round?.trim();
+      if (round) set.add(round);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "zh"));
+  }, [rows]);
 
   const recentPracticeRows = useMemo(
     () =>
@@ -722,7 +903,7 @@ export default function QuestionBankPage() {
             type="button"
             onClick={() => {
               setCurrentEditingId(null);
-              setDraft(defaultDraft);
+              setDraft(buildNewQuestionDraft());
               setShowManualModal(true);
             }}
             className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 hover:border-violet-400/50"
@@ -770,6 +951,7 @@ export default function QuestionBankPage() {
           "也可填写微调建议，对现有回答做局部调整（不会整段重写）。",
           "编辑满意后点「提交到 Notion」，仅写回参考回答（My Answer）。",
           "看题时遇到陌生术语，可切到「术语速查」Tab 快速对照。",
+          "「按公司看」可将同一公司题目合并成卡片；Tag 含「高频」的会标为必刷题。",
         ]}
       />
       <UpcomingInterviewFocus />
@@ -777,7 +959,7 @@ export default function QuestionBankPage() {
       <div className="inline-flex rounded-full border border-zinc-700 bg-zinc-950/80 p-0.5">
         <button
           type="button"
-          onClick={() => setMainTab("questions")}
+          onClick={() => switchMainTab("questions")}
           className={`rounded-full px-4 py-1.5 text-sm transition ${
             mainTab === "questions" ? "bg-zinc-700 text-zinc-100" : "text-zinc-400 hover:text-zinc-200"
           }`}
@@ -786,7 +968,16 @@ export default function QuestionBankPage() {
         </button>
         <button
           type="button"
-          onClick={() => setMainTab("glossary")}
+          onClick={() => switchMainTab("by-company")}
+          className={`rounded-full px-4 py-1.5 text-sm transition ${
+            mainTab === "by-company" ? "bg-zinc-700 text-zinc-100" : "text-zinc-400 hover:text-zinc-200"
+          }`}
+        >
+          按公司看
+        </button>
+        <button
+          type="button"
+          onClick={() => switchMainTab("glossary")}
           className={`rounded-full px-4 py-1.5 text-sm transition ${
             mainTab === "glossary" ? "bg-zinc-700 text-zinc-100" : "text-zinc-400 hover:text-zinc-200"
           }`}
@@ -797,6 +988,19 @@ export default function QuestionBankPage() {
 
       {mainTab === "glossary" ? (
         <QuestionBankGlossary />
+      ) : mainTab === "by-company" ? (
+        <QuestionBankByCompany
+          rows={rows}
+          focusCompany={focusCompany}
+          onSelectQuestion={(row) => {
+            const full = rows.find((item) => item.id === row.id);
+            if (!full) return;
+            switchMainTab("questions");
+            selectQuestionForPractice(full);
+            setCompanyFilter(full.company.trim() || "all");
+            setStatusText(`已从按公司看选中：${full.title}`);
+          }}
+        />
       ) : (
       <section className="grid gap-4 xl:grid-cols-[11fr_9fr]">
         {moduleOpen ? (
@@ -898,6 +1102,11 @@ export default function QuestionBankPage() {
                       {renderCategoryLabel(row.category)}
                     </span>
                     <span className="rounded-full border border-zinc-700 px-2 py-0.5 text-xs text-zinc-300">{row.source}</span>
+                    {row.round.trim() ? (
+                      <span className="rounded-full border border-cyan-500/30 bg-cyan-500/10 px-2 py-0.5 text-xs text-cyan-100">
+                        {row.round.trim()}
+                      </span>
+                    ) : null}
                     <span className="rounded-full border border-zinc-700 px-2 py-0.5 text-xs text-zinc-300">{row.difficulty}</span>
                     <span className="rounded-full border border-zinc-700 px-2 py-0.5 text-xs text-zinc-300">练习 {row.practiceCount}</span>
                     <span className="rounded-full border border-zinc-700 px-2 py-0.5 text-xs text-zinc-300">最近评分 {row.lastScore || "-"}</span>
@@ -936,6 +1145,7 @@ export default function QuestionBankPage() {
                     <div className="mt-3 space-y-2 rounded-xl border border-zinc-800 bg-zinc-950/70 p-3 text-sm text-zinc-300">
                       <p>公司：{row.company || "-"}</p>
                       <p>岗位：{row.role || "-"}</p>
+                      <p>轮次：{row.round.trim() || "-"}</p>
                       <p>最佳故事：{row.bestStory || "-"}</p>
                       <p>标签：{row.tags.length ? row.tags.join(" / ") : "-"}</p>
                       <p>
@@ -988,7 +1198,15 @@ export default function QuestionBankPage() {
               <div className="flex gap-2">
                 <select
                   value={selectedResumeBaseId}
-                  onChange={(e) => setSelectedResumeBaseId(e.target.value)}
+                  onChange={(e) => {
+                    const nextId = e.target.value;
+                    setSelectedResumeBaseId(nextId);
+                    try {
+                      window.localStorage.setItem(RESUME_BASE_STORAGE_KEY, nextId);
+                    } catch {
+                      // ignore storage failures
+                    }
+                  }}
                   className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200"
                   disabled={loadingResumeBases || resumeBaseOptions.length === 0}
                 >
@@ -1230,6 +1448,18 @@ export default function QuestionBankPage() {
                   ))}
                 </select>
               </div>
+              <div className="md:col-span-2">
+                <p className="text-sm text-zinc-300">面试轮次（Round）</p>
+                <RoundSuggestInput
+                  value={draft.round}
+                  onChange={(round) => setDraft((prev) => ({ ...prev, round }))}
+                  suggestions={roundSuggestions}
+                  placeholder="如：一面 · 业务面"
+                />
+                <p className="mt-1 text-xs text-zinc-500">
+                  用于「按公司看」分轮展示。需在 Notion 题库表添加 Round 或 轮次 字段（Text / Select）后才会写入。
+                </p>
+              </div>
             </div>
             <div className="mt-4 flex justify-end gap-2">
               <button
@@ -1237,7 +1467,7 @@ export default function QuestionBankPage() {
                 onClick={() => {
                   setShowManualModal(false);
                   setCurrentEditingId(null);
-                  setDraft(defaultDraft);
+                  setDraft(buildNewQuestionDraft());
                 }}
                 className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-300"
               >

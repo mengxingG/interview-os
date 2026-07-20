@@ -91,6 +91,7 @@ export async function POST(req: Request) {
           source: "真实面试",
           company,
           role,
+          round: "",
           difficulty: "中等",
           myAnswer: "",
           aiFeedback: "来源：Interview Records 自动拆题",

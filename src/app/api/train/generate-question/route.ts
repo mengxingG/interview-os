@@ -77,6 +77,7 @@ ${body.content}`.trim();
       source: "知识实战",
       company: "",
       role: "",
+      round: "",
       difficulty: parsed.difficulty ?? "中等",
       myAnswer: "",
       aiFeedback: `来源：知识训练自动生成（Knowledge: ${body.title}）`,
