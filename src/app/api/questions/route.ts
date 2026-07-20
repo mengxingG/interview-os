@@ -10,7 +10,7 @@ import { normalizeQuestionBankCategory } from "@/lib/question-bank-categories";
 
 type QuestionPayload = Omit<QuestionRow, "id" | "knowledge"> & { knowledge?: Array<{ id: string }> };
 
-function normalizeQuestionPayload(item: QuestionPayload): QuestionPayload {
+function normalizeQuestionPayload(item: QuestionPayload) {
   return {
     ...item,
     category: normalizeQuestionBankCategory(item.category),
