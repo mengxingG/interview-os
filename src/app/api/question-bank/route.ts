@@ -48,7 +48,15 @@ function asRecord(value: unknown): Record<string, unknown> {
 }
 
 function pickFirstExisting(candidates: string[], available: Set<string>) {
-  return candidates.find((name) => available.has(name));
+  for (const name of candidates) {
+    if (available.has(name)) return name;
+  }
+  const lowerMap = new Map(Array.from(available).map((key) => [key.toLowerCase(), key]));
+  for (const name of candidates) {
+    const hit = lowerMap.get(name.toLowerCase());
+    if (hit) return hit;
+  }
+  return undefined;
 }
 
 function readRichText(properties: NotionProperties, key: string) {
@@ -225,7 +233,7 @@ async function createQuestionInNotion(data: Omit<QuestionBankRow, "id" | "knowle
   const sourceKey = pickFirstExisting(["Source", "来源"], available);
   const companyKey = pickFirstExisting(["Company", "公司"], available);
   const roleKey = pickFirstExisting(["Role", "岗位"], available);
-  const roundKey = pickFirstExisting(["Round", "轮次", "面试轮次"], available);
+  const roundKey = pickFirstExisting(["round", "Round", "轮次", "面试轮次"], available);
   const difficultyKey = pickFirstExisting(["Difficulty", "难度"], available);
   const myAnswerKey = pickFirstExisting(["My Answer"], available);
   const aiFeedbackKey = pickFirstExisting(["AI Feedback"], available);
@@ -249,7 +257,7 @@ async function createQuestionInNotion(data: Omit<QuestionBankRow, "id" | "knowle
     props[roundKey] =
       defs[roundKey]?.type === "rich_text"
         ? { rich_text: [{ text: { content: data.round.trim() } }] }
-        : writeSelectLikeValue(defs, roundKey, data.round.trim());
+        : { select: { name: data.round.trim() } };
   }
   if (difficultyKey) Object.assign(props, { [difficultyKey]: writeSelectLikeValue(defs, difficultyKey, data.difficulty) });
   if (myAnswerKey) props[myAnswerKey] = { rich_text: [{ text: { content: data.myAnswer.substring(0, 2000) } }] };
