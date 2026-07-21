@@ -84,6 +84,7 @@ type MainTab = (typeof MAIN_TABS)[number];
 const MAIN_TAB_STORAGE_KEY = "question-bank:main-tab";
 const RESUME_BASE_STORAGE_KEY = "question-bank:resume-base-id";
 const DASHBOARD_PRACTICE_START_KEY = "dashboard-practice-started";
+const UNLABELED_ROUND_FILTER = "__unlabeled__";
 
 function resolveMainTabFromQuery(tab: string | null): MainTab | null {
   if (tab === "glossary") return "glossary";
@@ -240,6 +241,7 @@ export default function QuestionBankPage() {
   const [mainTab, setMainTab] = useState<MainTab>("questions");
   const [query, setQuery] = useState("");
   const [companyFilter, setCompanyFilter] = useState("all");
+  const [roundFilter, setRoundFilter] = useState("all");
   const [focusCompany, setFocusCompany] = useState("");
   const [tagFilter, setTagFilter] = useState("all");
   const [listSort, setListSort] = useState<"frequency" | "category">("frequency");
@@ -835,10 +837,38 @@ export default function QuestionBankPage() {
     return list;
   }, [rows, listSort]);
 
+  const companyFilterOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const row of rows) {
+      for (const name of splitCompanyNames(row.company)) set.add(name);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "zh"));
+  }, [rows]);
+
+  const roundFilterOptions = useMemo(() => {
+    const set = new Set<string>();
+    let hasUnlabeled = false;
+    for (const row of rows) {
+      const round = row.round?.trim();
+      if (round) set.add(round);
+      else hasUnlabeled = true;
+    }
+    const list = Array.from(set).sort((a, b) => a.localeCompare(b, "zh"));
+    return { list, hasUnlabeled };
+  }, [rows]);
+
   const displayedRows = useMemo(() => {
     const q = query.trim().toLowerCase();
     let list = rows.filter((row) => {
       if (companyFilter !== "all" && !splitCompanyNames(row.company).includes(companyFilter)) return false;
+      if (roundFilter !== "all") {
+        const round = row.round?.trim() ?? "";
+        if (roundFilter === UNLABELED_ROUND_FILTER) {
+          if (round) return false;
+        } else if (round !== roundFilter) {
+          return false;
+        }
+      }
       if (tagFilter !== "all") {
         const inTags = row.tags.includes(tagFilter);
         const inCategory = renderCategoryLabel(row.category) === tagFilter;
@@ -860,7 +890,7 @@ export default function QuestionBankPage() {
       );
     }
     return list;
-  }, [rows, query, tagFilter, listSort, companyFilter]);
+  }, [rows, query, tagFilter, listSort, companyFilter, roundFilter]);
 
   const roundSuggestions = useMemo(() => {
     const set = new Set(DEFAULT_ROUND_SUGGESTIONS);
@@ -990,12 +1020,16 @@ export default function QuestionBankPage() {
         <QuestionBankByCompany
           rows={rows}
           focusCompany={focusCompany}
-          onSelectQuestion={(row) => {
+          onSelectQuestion={(row, context) => {
             const full = rows.find((item) => item.id === row.id);
             if (!full) return;
             switchMainTab("questions");
             selectQuestionForPractice(full);
-            setCompanyFilter(full.company.trim() || "all");
+            setQuery(full.title);
+            setCompanyFilter(context.company.trim() || "all");
+            setRoundFilter(full.round.trim() || UNLABELED_ROUND_FILTER);
+            setTagFilter("all");
+            setExpandedId(full.id);
             setStatusText(`已从按公司看选中：${full.title}`);
           }}
         />
@@ -1023,6 +1057,42 @@ export default function QuestionBankPage() {
                 placeholder="搜索面试题或考察点关键词，如 RAG、离职、商业化..."
                 className="w-full rounded-2xl border border-zinc-700 bg-zinc-900 py-3 pl-10 pr-4 text-sm text-zinc-100 placeholder:text-zinc-500"
               />
+            </div>
+
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              <label className="block text-xs text-zinc-500">
+                公司
+                <select
+                  value={companyFilter}
+                  onChange={(event) => setCompanyFilter(event.target.value)}
+                  className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200"
+                >
+                  <option value="all">全部公司</option>
+                  {companyFilterOptions.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block text-xs text-zinc-500">
+                轮次
+                <select
+                  value={roundFilter}
+                  onChange={(event) => setRoundFilter(event.target.value)}
+                  className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200"
+                >
+                  <option value="all">全部轮次</option>
+                  {roundFilterOptions.list.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                  {roundFilterOptions.hasUnlabeled ? (
+                    <option value={UNLABELED_ROUND_FILTER}>未标注</option>
+                  ) : null}
+                </select>
+              </label>
             </div>
 
             <div className="mt-3 flex flex-wrap gap-2">

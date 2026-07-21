@@ -11,10 +11,14 @@ export type CompanyQuestionRow = {
   tags: string[];
 };
 
+export type SelectQuestionContext = {
+  company: string;
+};
+
 type Props = {
   rows: CompanyQuestionRow[];
   focusCompany?: string;
-  onSelectQuestion?: (row: CompanyQuestionRow) => void;
+  onSelectQuestion?: (row: CompanyQuestionRow, context: SelectQuestionContext) => void;
 };
 
 const UNLABELED_ROUND = "未标注轮次";
@@ -145,9 +149,38 @@ function buildCompanyCards(rows: CompanyQuestionRow[]): CompanyCard[] {
   return cards;
 }
 
+const EXPANDED_STORAGE_KEY = "question-bank:by-company-expanded";
+
+function readExpandedState(): Record<string, boolean> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(EXPANDED_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    const result: Record<string, boolean> = {};
+    for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+      if (typeof value === "boolean") result[key] = value;
+    }
+    return result;
+  } catch {
+    return {};
+  }
+}
+
+function writeExpandedState(next: Record<string, boolean>) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(EXPANDED_STORAGE_KEY, JSON.stringify(next));
+  } catch {
+    // ignore storage failures
+  }
+}
+
 export function QuestionBankByCompany({ rows, focusCompany, onSelectQuestion }: Props) {
   const [query, setQuery] = useState("");
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [expandedHydrated, setExpandedHydrated] = useState(false);
 
   const cards = useMemo(() => buildCompanyCards(rows), [rows]);
 
@@ -162,6 +195,16 @@ export function QuestionBankByCompany({ rows, focusCompany, onSelectQuestion }: 
       );
     });
   }, [cards, query]);
+
+  useEffect(() => {
+    setExpanded(readExpandedState());
+    setExpandedHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!expandedHydrated) return;
+    writeExpandedState(expanded);
+  }, [expanded, expandedHydrated]);
 
   useEffect(() => {
     const focus = (focusCompany ?? "").trim();
@@ -292,7 +335,7 @@ export function QuestionBankByCompany({ rows, focusCompany, onSelectQuestion }: 
                               <li key={q.id}>
                                 <button
                                   type="button"
-                                  onClick={() => onSelectQuestion?.(q)}
+                                  onClick={() => onSelectQuestion?.(q, { company: card.company })}
                                   className="flex w-full items-start gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition hover:bg-zinc-800/80"
                                 >
                                   <span className="mt-0.5 shrink-0 font-mono text-xs text-zinc-500">
