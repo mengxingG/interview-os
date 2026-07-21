@@ -23,6 +23,48 @@ export function isMustDoQuestion(tags: string[]) {
   return tags.some((tag) => tag.trim() === "高频");
 }
 
+/** Company 支持用中英文分号连接多家公司，如「乐其; 税务公司」 */
+export function splitCompanyNames(company: string): string[] {
+  return company
+    .split(/[;；]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+/** 一面 → 二面 → 三面 → 其余 → 未标注 */
+function roundSortKey(name: string): [number, string] {
+  if (name === UNLABELED_ROUND || name === "全部题目") return [900, name];
+  const match = name.match(/([一二三四五六七八九十\d]+)\s*面/);
+  if (match) {
+    const map: Record<string, number> = {
+      一: 1,
+      二: 2,
+      三: 3,
+      四: 4,
+      五: 5,
+      六: 6,
+      七: 7,
+      八: 8,
+      九: 9,
+      十: 10,
+    };
+    const raw = match[1];
+    const n = map[raw] ?? Number(raw);
+    if (Number.isFinite(n)) return [n, name];
+  }
+  if (/交叉/.test(name)) return [70, name];
+  if (/HR/i.test(name)) return [80, name];
+  if (/CEO/i.test(name)) return [85, name];
+  if (/终面/.test(name)) return [90, name];
+  return [100, name];
+}
+
+function compareRounds(a: string, b: string) {
+  const [ka, sa] = roundSortKey(a);
+  const [kb, sb] = roundSortKey(b);
+  return ka - kb || sa.localeCompare(sb, "zh");
+}
+
 type RoundGroup = {
   name: string;
   questions: CompanyQuestionRow[];
@@ -40,11 +82,13 @@ type CompanyCard = {
 function buildCompanyCards(rows: CompanyQuestionRow[]): CompanyCard[] {
   const byCompany = new Map<string, CompanyQuestionRow[]>();
   for (const row of rows) {
-    const company = row.company.trim();
-    if (!company) continue;
-    const list = byCompany.get(company) ?? [];
-    list.push(row);
-    byCompany.set(company, list);
+    const companies = [...new Set(splitCompanyNames(row.company))];
+    if (companies.length === 0) continue;
+    for (const company of companies) {
+      const list = byCompany.get(company) ?? [];
+      if (!list.some((item) => item.id === row.id)) list.push(row);
+      byCompany.set(company, list);
+    }
   }
 
   const cards: CompanyCard[] = [];
@@ -66,7 +110,7 @@ function buildCompanyCards(rows: CompanyQuestionRow[]): CompanyCard[] {
 
     const labeledRounds = Array.from(roundMap.entries())
       .filter(([name]) => name !== UNLABELED_ROUND)
-      .sort(([a], [b]) => a.localeCompare(b, "zh"))
+      .sort(([a], [b]) => compareRounds(a, b))
       .map(([name, list]) => ({ name, questions: sortQuestions(list) }));
 
     const unlabeled = roundMap.get(UNLABELED_ROUND);
@@ -139,8 +183,8 @@ export function QuestionBankByCompany({ rows, focusCompany, onSelectQuestion }: 
       <div className="mb-4">
         <h2 className="text-lg font-semibold text-zinc-100">按公司看</h2>
         <p className="mt-1 text-sm text-zinc-400">
-          同一公司的题目会合并到一张卡片。展开可看各轮考察内容与覆盖维度；标了「高频」Tag
-          的是必刷题。
+          同一公司合并为一张卡片；Company 用分号可拆成多家。卡片内按 Round（如一面 · 业务面 / 二面 · 业务面）分成独立模块；「高频」Tag
+          为必刷题。
         </p>
       </div>
 
@@ -229,14 +273,19 @@ export function QuestionBankByCompany({ rows, focusCompany, onSelectQuestion }: 
                 </button>
 
                 {open ? (
-                  <div className="space-y-4 border-t border-zinc-800 px-4 py-3">
+                  <div className="space-y-3 border-t border-zinc-800 px-4 py-3">
                     {card.rounds.map((round) => (
-                      <div key={round.name}>
-                        <div className="mb-2 flex items-baseline justify-between gap-2">
-                          <h4 className="text-sm font-medium text-zinc-200">{round.name}</h4>
-                          <span className="text-xs text-zinc-500">考了 {round.questions.length} 题</span>
+                      <section
+                        key={round.name}
+                        className="rounded-xl border border-zinc-800/90 bg-zinc-900/40 p-3"
+                      >
+                        <div className="mb-2 flex items-baseline justify-between gap-2 border-b border-zinc-800/80 pb-2">
+                          <h4 className="text-sm font-semibold text-zinc-100">{round.name}</h4>
+                          <span className="shrink-0 text-xs text-zinc-500">
+                            考了 {round.questions.length} 题
+                          </span>
                         </div>
-                        <ul className="space-y-1.5">
+                        <ul className="space-y-1">
                           {round.questions.map((q, index) => {
                             const mustDo = isMustDoQuestion(q.tags);
                             return (
@@ -244,7 +293,7 @@ export function QuestionBankByCompany({ rows, focusCompany, onSelectQuestion }: 
                                 <button
                                   type="button"
                                   onClick={() => onSelectQuestion?.(q)}
-                                  className="flex w-full items-start gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition hover:bg-zinc-900"
+                                  className="flex w-full items-start gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition hover:bg-zinc-800/80"
                                 >
                                   <span className="mt-0.5 shrink-0 font-mono text-xs text-zinc-500">
                                     #{index + 1}
@@ -262,7 +311,7 @@ export function QuestionBankByCompany({ rows, focusCompany, onSelectQuestion }: 
                             );
                           })}
                         </ul>
-                      </div>
+                      </section>
                     ))}
                   </div>
                 ) : null}

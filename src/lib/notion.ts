@@ -72,7 +72,16 @@ async function getStoryPropertyNames() {
 }
 
 function pickFirstExisting(candidates: string[], available: Set<string>) {
-  return candidates.find((name) => available.has(name));
+  for (const name of candidates) {
+    if (available.has(name)) return name;
+  }
+  // Notion 属性名大小写可能不一致（如 round vs Round）
+  const lowerMap = new Map(Array.from(available).map((key) => [key.toLowerCase(), key]));
+  for (const name of candidates) {
+    const hit = lowerMap.get(name.toLowerCase());
+    if (hit) return hit;
+  }
+  return undefined;
 }
 
 async function getJDPropertyNames() {
@@ -182,8 +191,15 @@ async function getCoachingPropertyDefs() {
   return properties;
 }
 
-async function getQuestionPropertyNames() {
+async function invalidateQuestionPropertyCache() {
+  if (!dbs.questionBank) return;
+  questionPropertyCache.delete(dbs.questionBank);
+  questionPropertyDefCache.delete(dbs.questionBank);
+}
+
+async function getQuestionPropertyNames(options?: { refresh?: boolean }) {
   ensureQuestionDbId();
+  if (options?.refresh) invalidateQuestionPropertyCache();
   if (questionPropertyCache.has(dbs.questionBank)) {
     return questionPropertyCache.get(dbs.questionBank)!;
   }
@@ -193,8 +209,12 @@ async function getQuestionPropertyNames() {
   return names;
 }
 
-async function getQuestionPropertyDefs() {
+async function getQuestionPropertyDefs(options?: { refresh?: boolean }) {
   ensureQuestionDbId();
+  if (options?.refresh) {
+    questionPropertyDefCache.delete(dbs.questionBank);
+    questionPropertyCache.delete(dbs.questionBank);
+  }
   if (questionPropertyDefCache.has(dbs.questionBank)) {
     return questionPropertyDefCache.get(dbs.questionBank)!;
   }
@@ -204,7 +224,26 @@ async function getQuestionPropertyDefs() {
       ? (db.properties as Record<string, { type?: string }>)
       : {};
   questionPropertyDefCache.set(dbs.questionBank, properties);
+  questionPropertyCache.set(dbs.questionBank, new Set(Object.keys(properties)));
   return properties;
+}
+
+const QUESTION_ROUND_PROPERTY_CANDIDATES = ["round", "Round", "轮次", "面试轮次"] as const;
+
+async function resolveQuestionRoundKey(
+  available: Set<string>,
+  defs: Record<string, { type?: string }>,
+  needsRound: boolean,
+): Promise<{ available: Set<string>; defs: Record<string, { type?: string }>; roundKey?: string }> {
+  let nextAvailable = available;
+  let nextDefs = defs;
+  let roundKey = pickFirstExisting([...QUESTION_ROUND_PROPERTY_CANDIDATES], nextAvailable);
+  if (needsRound && !roundKey) {
+    nextAvailable = await getQuestionPropertyNames({ refresh: true });
+    nextDefs = await getQuestionPropertyDefs({ refresh: true });
+    roundKey = pickFirstExisting([...QUESTION_ROUND_PROPERTY_CANDIDATES], nextAvailable);
+  }
+  return { available: nextAvailable, defs: nextDefs, roundKey };
 }
 
 /** 按 Notion 字段真实类型写入 select / multi_select（Category 已改为 multi_select） */
@@ -782,15 +821,18 @@ export async function getQuestions(filters?: {
 
 export async function addQuestion(data: Omit<QuestionRow, "id">) {
   ensureQuestionDbId();
-  const available = await getQuestionPropertyNames();
-  const defs = await getQuestionPropertyDefs();
+  let available = await getQuestionPropertyNames();
+  let defs = await getQuestionPropertyDefs();
   const titleKey = pickFirstExisting(["Title", "Name"], available);
   if (!titleKey) throw new Error("QuestionBank database must contain Title/Name");
+  const resolved = await resolveQuestionRoundKey(available, defs, Boolean(data.round?.trim()));
+  available = resolved.available;
+  defs = resolved.defs;
+  const roundKey = resolved.roundKey;
   const categoryKey = pickFirstExisting(["Category", "分类"], available);
   const sourceKey = pickFirstExisting(["Source", "来源"], available);
   const companyKey = pickFirstExisting(["Company", "公司"], available);
   const roleKey = pickFirstExisting(["Role", "岗位"], available);
-  const roundKey = pickFirstExisting(["Round", "轮次", "面试轮次"], available);
   const difficultyKey = pickFirstExisting(["Difficulty", "难度"], available);
   const myAnswerKey = pickFirstExisting(["My Answer"], available);
   const aiFeedbackKey = pickFirstExisting(["AI Feedback"], available);
@@ -803,18 +845,19 @@ export async function addQuestion(data: Omit<QuestionRow, "id">) {
   const knowledgeKey = pickFirstExisting(["Knowledge"], available);
 
   const category = normalizeQuestionBankCategory(data.category);
+  const roundValue = data.round?.trim() ?? "";
   const properties: Record<string, unknown> = {
     [titleKey]: { title: [{ text: { content: data.title } }] },
     ...(categoryKey ? { [categoryKey]: writeSelectLikeValue(defs, categoryKey, category) } : {}),
     ...(sourceKey ? { [sourceKey]: writeSelectLikeValue(defs, sourceKey, data.source) } : {}),
     ...(companyKey ? { [companyKey]: { rich_text: [{ text: { content: data.company } }] } } : {}),
     ...(roleKey ? { [roleKey]: { rich_text: [{ text: { content: data.role } }] } } : {}),
-    ...(roundKey && data.round?.trim()
+    ...(roundKey && roundValue
       ? {
           [roundKey]:
             defs[roundKey]?.type === "rich_text"
-              ? { rich_text: [{ text: { content: data.round.trim() } }] }
-              : writeSelectLikeValue(defs, roundKey, data.round.trim()),
+              ? { rich_text: [{ text: { content: roundValue } }] }
+              : { select: { name: roundValue } },
         }
       : {}),
     ...(difficultyKey ? { [difficultyKey]: writeSelectLikeValue(defs, difficultyKey, data.difficulty) } : {}),
@@ -842,14 +885,21 @@ export async function addQuestionsBatch(rows: Array<Omit<QuestionRow, "id">>) {
 }
 
 export async function updateQuestion(pageId: string, data: Partial<Omit<QuestionRow, "id">>) {
-  const available = await getQuestionPropertyNames();
-  const defs = await getQuestionPropertyDefs();
+  let available = await getQuestionPropertyNames();
+  let defs = await getQuestionPropertyDefs();
   const titleKey = pickFirstExisting(["Title", "Name"], available);
   const categoryKey = pickFirstExisting(["Category", "分类"], available);
   const sourceKey = pickFirstExisting(["Source", "来源"], available);
   const companyKey = pickFirstExisting(["Company", "公司"], available);
   const roleKey = pickFirstExisting(["Role", "岗位"], available);
-  const roundKey = pickFirstExisting(["Round", "轮次", "面试轮次"], available);
+  const resolved = await resolveQuestionRoundKey(
+    available,
+    defs,
+    typeof data.round === "string" && Boolean(data.round.trim()),
+  );
+  available = resolved.available;
+  defs = resolved.defs;
+  const roundKey = resolved.roundKey;
   const difficultyKey = pickFirstExisting(["Difficulty", "难度"], available);
   const myAnswerKey = pickFirstExisting(["My Answer"], available);
   const aiFeedbackKey = pickFirstExisting(["AI Feedback"], available);
@@ -872,10 +922,11 @@ export async function updateQuestion(pageId: string, data: Partial<Omit<Question
   if (typeof data.company === "string" && companyKey) properties[companyKey] = { rich_text: [{ text: { content: data.company } }] };
   if (typeof data.role === "string" && roleKey) properties[roleKey] = { rich_text: [{ text: { content: data.role } }] };
   if (typeof data.round === "string" && roundKey && data.round.trim()) {
+    const roundValue = data.round.trim();
     properties[roundKey] =
       defs[roundKey]?.type === "rich_text"
-        ? { rich_text: [{ text: { content: data.round.trim() } }] }
-        : writeSelectLikeValue(defs, roundKey, data.round.trim());
+        ? { rich_text: [{ text: { content: roundValue } }] }
+        : { select: { name: roundValue } };
   }
   if (data.difficulty && difficultyKey) properties[difficultyKey] = writeSelectLikeValue(defs, difficultyKey, data.difficulty);
   if (typeof data.myAnswer === "string" && myAnswerKey) properties[myAnswerKey] = { rich_text: [{ text: { content: data.myAnswer.slice(0, 2000) } }] };

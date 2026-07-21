@@ -7,7 +7,7 @@ import { ModelSelect } from "@/components/ModelSelect";
 import { UpcomingInterviewFocus } from "@/components/UpcomingInterviewFocus";
 import VoiceInputButton from "@/components/VoiceInputButton";
 import { QuestionBankGlossary } from "@/components/QuestionBankGlossary";
-import { QuestionBankByCompany } from "@/components/QuestionBankByCompany";
+import { QuestionBankByCompany, splitCompanyNames } from "@/components/QuestionBankByCompany";
 import { readModelSelection, writeModelSelection } from "@/lib/model-selection";
 import {
   readQuestionBankManualDefaults,
@@ -75,8 +75,8 @@ const DEFAULT_ROUND_SUGGESTIONS = [
   "一面 · 业务面",
   "二面 · 业务面",
   "三面 · 终面",
-  "HR面",
-  "CEO面",
+  "HR 面",
+  "CEO 终面",
   "交叉面",
 ];
 const MAIN_TABS = ["questions", "by-company", "glossary"] as const;
@@ -90,19 +90,6 @@ function resolveMainTabFromQuery(tab: string | null): MainTab | null {
   if (tab === "company" || tab === "by-company") return "by-company";
   if (tab === "questions") return "questions";
   return null;
-}
-
-function readInitialMainTab(): MainTab {
-  if (typeof window === "undefined") return "questions";
-  const params = new URLSearchParams(window.location.search);
-  const fromQuery = resolveMainTabFromQuery(params.get("tab"));
-  if (fromQuery) return fromQuery;
-  return readInitialTab({
-    queryParam: null,
-    validTabs: MAIN_TABS,
-    storageKey: MAIN_TAB_STORAGE_KEY,
-    fallback: "questions",
-  });
 }
 
 function persistManualFormDefaults(form: Omit<QuestionBankRow, "id">) {
@@ -237,7 +224,7 @@ export default function QuestionBankPage() {
   const [showBatchModal, setShowBatchModal] = useState(false);
   const [showImportPreview, setShowImportPreview] = useState(false);
   const [importPreviewRows, setImportPreviewRows] = useState<QuestionBankRow[]>([]);
-  const [modelType, setModelType] = useState<ModelType>(() => readModelSelection("question-bank", "practice"));
+  const [modelType, setModelType] = useState<ModelType>("practice");
   const [selectedQuestion, setSelectedQuestion] = useState<QuestionBankRow | null>(null);
   const [practiceAnswer, setPracticeAnswer] = useState("");
   const [practiceStatus, setPracticeStatus] = useState("选中题目后可生成 AI 模拟回答");
@@ -245,14 +232,12 @@ export default function QuestionBankPage() {
   const [isGeneratingAnswer, setIsGeneratingAnswer] = useState(false);
   const [isRefiningAnswer, setIsRefiningAnswer] = useState(false);
   const [refineInstruction, setRefineInstruction] = useState("");
-  const [practiceModelType, setPracticeModelType] = useState<ModelType>(() =>
-    readModelSelection("question-bank-practice", "mock"),
-  );
+  const [practiceModelType, setPracticeModelType] = useState<ModelType>("mock");
   const [resumeBaseOptions, setResumeBaseOptions] = useState<ResumeBaseOption[]>([]);
   const [selectedResumeBaseId, setSelectedResumeBaseId] = useState("");
   const [loadingResumeBases, setLoadingResumeBases] = useState(false);
   const [moduleOpen, setModuleOpen] = useState(true);
-  const [mainTab, setMainTab] = useState<MainTab>(readInitialMainTab);
+  const [mainTab, setMainTab] = useState<MainTab>("questions");
   const [query, setQuery] = useState("");
   const [companyFilter, setCompanyFilter] = useState("all");
   const [focusCompany, setFocusCompany] = useState("");
@@ -299,9 +284,22 @@ export default function QuestionBankPage() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    setModelType(readModelSelection("question-bank", "practice"));
+    setPracticeModelType(readModelSelection("question-bank-practice", "mock"));
     const params = new URLSearchParams(window.location.search);
     const fromQuery = resolveMainTabFromQuery(params.get("tab"));
-    if (fromQuery) setMainTab(fromQuery);
+    if (fromQuery) {
+      setMainTab(fromQuery);
+    } else {
+      setMainTab(
+        readInitialTab<MainTab>({
+          queryParam: null,
+          validTabs: MAIN_TABS,
+          storageKey: MAIN_TAB_STORAGE_KEY,
+          fallback: "questions",
+        }),
+      );
+    }
     const company = (params.get("company") || "").trim();
     if (company) {
       setCompanyFilter(company);
@@ -840,7 +838,7 @@ export default function QuestionBankPage() {
   const displayedRows = useMemo(() => {
     const q = query.trim().toLowerCase();
     let list = rows.filter((row) => {
-      if (companyFilter !== "all" && row.company !== companyFilter) return false;
+      if (companyFilter !== "all" && !splitCompanyNames(row.company).includes(companyFilter)) return false;
       if (tagFilter !== "all") {
         const inTags = row.tags.includes(tagFilter);
         const inCategory = renderCategoryLabel(row.category) === tagFilter;
